@@ -11,7 +11,7 @@ Original requirements: [SPEC.md](SPEC.md). Design: [ARCHITECTURE.md](ARCHITECTUR
 | 2 | City generation, buildings, doors, stairs, performance | ✅ Done | `5a8abfe` |
 | 3 | Inventory, looting containers, item pickup/drop | ✅ Done | `8e67c76` |
 | 4 | Survival stats, death, respawn | ✅ Done | `72da7a7` |
-| 5 | Weapons & FPS combat with viewmodels | ✅ Done | see `git log` |
+| 5 | Weapons & FPS combat with viewmodels | ✅ Done | `de9e212` |
 | 6 | Zombies (navmesh AI, noise/vision, combat) | ⏳ Next | |
 | 7 | PvP, lag-compensated hits, death loot bags, kill feed | | |
 | 8 | Groups/teams and chat | | |
