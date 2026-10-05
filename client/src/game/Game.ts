@@ -374,7 +374,7 @@ export class Game {
     if (playing) {
       this.updateHotbarInput();
       this.updateInteraction();
-      if (inv) this.weapons.update(dt, inv, this.hud.using);
+      if (inv) this.weapons.update(dt, inv, this.inventoryUI.activeHotbar, this.hud.using);
     }
     this.updateAim(dt);
     this.remotes.update(this.conn.serverNow(), dt);

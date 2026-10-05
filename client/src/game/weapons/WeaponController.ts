@@ -64,10 +64,12 @@ export class WeaponController {
     return weaponForItem(held?.defId);
   }
 
-  /** Per frame while alive and playing. */
-  update(dt: number, inv: Inventory, usingItem: boolean): void {
+  /**
+   * Per frame while alive and playing. `slot` is the hotbar slot selected on this client: the
+   * server only echoes the inventory on changes, so inv.activeHotbar can lag behind a key press.
+   */
+  update(dt: number, inv: Inventory, slot: number, usingItem: boolean): void {
     const { input, viewmodel } = this.d;
-    const slot = inv.activeHotbar;
     const held = inv.slots[slot] ?? null;
     const def = held ? getItemDef(held.defId) : undefined;
     const w = this.weaponFor(held);

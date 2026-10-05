@@ -12,6 +12,7 @@
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.21.0",
     "better-sqlite3": "^13.0.3",
+    "recast-navigation": "^0.43.1",
     "socket.io": "^4.8.4"
   },
   "devDependencies": {
