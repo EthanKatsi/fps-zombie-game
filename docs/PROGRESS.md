@@ -256,6 +256,20 @@ Everything is generated in code (no downloaded assets):
   - a sprint pose (guns canted down and across, melee raised)
   - idle breathing (reduced while aiming)
 
+## Extra: camera views and controls (requested after M7)
+
+- **V** cycles the camera: first person → third person (over the shoulder) → facing view (looking at your face) →
+  first person. The user chose V because R stays Reload.
+  - `LocalAvatar` (in `RemotePlayers.ts`) is your own humanoid body, shown in the two outside views.
+  - `Game.applyCameraMode` moves the camera out from the eye and stops it short of walls.
+  - `Game.aimRay` gives shots and E-interactions an origin at the eye, aimed at the point under the crosshair
+    (correct over-the-shoulder aiming). In the facing view it uses your facing direction and hides the crosshair.
+  - The rifle scope overlay only appears in first person.
+- **Crouch is Ctrl** (user request).
+  - Ctrl+W (crouch-walk forward) would close the tab. Joining therefore requests fullscreen and the Keyboard Lock API
+    (`main.ts lockKeyboard`); hold Esc to leave fullscreen.
+  - Browsers without keyboard lock get a "leave site?" confirmation while in a game.
+
 ## Extra: assault rifle (requested after M7)
 
 - An `assault_rifle` item plus weapon. It's the first **full-auto** weapon (`WeaponDef.automatic`: hold to fire):

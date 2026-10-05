@@ -23,6 +23,15 @@ const pickFor = (list: number[], id: string, salt: number) => {
 };
 const mat = (c: number, rough = 0.85) => new THREE.MeshStandardMaterial({ color: c, roughness: rough });
 
+/** Clothing/skin/hair chosen from the player id (same on every client). */
+const lookForPlayer = (id: string): HumanoidLook => ({
+  skin: mat(pickFor(SKINS, id, 3), 0.75),
+  shirt: mat(pickFor(JACKETS, id, 7), 0.9),
+  pants: mat(pickFor(PANTS, id, 11), 0.9),
+  shoes: mat(0x1d1a17, 0.7),
+  hair: pickFor([0, 1, 2, 3, 4], id, 13),
+});
+
 /** Third-person held item: a rough shape per category. */
 const makeHeld = (defId: string): THREE.Object3D | null => {
   const def = getItemDef(defId);
@@ -75,13 +84,7 @@ class RemotePlayer {
   private hits = -1;
 
   constructor(readonly id: string, name: string) {
-    const look: HumanoidLook = {
-      skin: mat(pickFor(SKINS, id, 3), 0.75),
-      shirt: mat(pickFor(JACKETS, id, 7), 0.9),
-      pants: mat(pickFor(PANTS, id, 11), 0.9),
-      shoes: mat(0x1d1a17, 0.7),
-      hair: pickFor([0, 1, 2, 3, 4], id, 13),
-    };
+    const look = lookForPlayer(id);
     this.ownMaterials = [look.skin, look.shirt, look.pants, look.shoes];
     this.body = new Humanoid(look, { zombie: false, limp: 0, hunch: 0, reach: 0, flail: false });
     this.root.add(this.body.root);
@@ -195,6 +198,81 @@ class RemotePlayer {
       this.heldMesh.geometry.dispose();
       (this.heldMesh.material as THREE.Material).dispose();
     }
+  }
+}
+
+/**
+ * Your own body, shown in the third-person and facing camera views. Driven directly by the
+ * predicted local state (no interpolation buffer), with the same humanoid animation.
+ */
+export class LocalAvatar {
+  readonly root = new THREE.Group();
+  private readonly body: Humanoid;
+  private readonly hand = new THREE.Group();
+  private heldId = '';
+  private heldMesh: THREE.Object3D | null = null;
+  private attackT = 0;
+  private crouchBlend = 0;
+  private last: { x: number; z: number } | null = null;
+
+  constructor(id: string) {
+    this.body = new Humanoid(lookForPlayer(id), { zombie: false, limp: 0, hunch: 0, reach: 0, flail: false });
+    this.root.add(this.body.root);
+    this.hand.position.set(0.18, 1.3, -0.3);
+    this.root.add(this.hand);
+    this.root.visible = false;
+  }
+
+  setHeld(defId: string): void {
+    if (defId === this.heldId) return;
+    this.heldId = defId;
+    if (this.heldMesh) this.hand.remove(this.heldMesh);
+    this.heldMesh = defId ? makeHeld(defId) : null;
+    if (this.heldMesh) {
+      this.heldMesh.position.z = -0.2;
+      this.hand.add(this.heldMesh);
+    }
+  }
+
+  playAttack(): void {
+    this.attackT = 1;
+  }
+
+  hit(): void {
+    this.body.hit();
+  }
+
+  /** World position of the held item's tip (tracers in third person). */
+  muzzle(out: THREE.Vector3): THREE.Vector3 {
+    out.set(0, 0, -0.55);
+    this.hand.updateWorldMatrix(true, false);
+    return out.applyMatrix4(this.hand.matrixWorld);
+  }
+
+  update(feet: THREE.Vector3, yaw: number, pitch: number, crouching: boolean, dead: boolean, dt: number): void {
+    this.root.position.copy(feet);
+    this.root.rotation.y = yaw;
+    this.crouchBlend += ((crouching ? 1 : 0) - this.crouchBlend) * (1 - Math.exp(-dt * 12));
+    const height = lerp(MOVEMENT.standHeight, MOVEMENT.crouchHeight, this.crouchBlend);
+    const dx = this.last ? feet.x - this.last.x : 0;
+    const dz = this.last ? feet.z - this.last.z : 0;
+    this.last = { x: feet.x, z: feet.z };
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    const def = this.heldId ? getItemDef(this.heldId) : undefined;
+    this.attackT = Math.max(0, this.attackT - dt * 5);
+    this.body.update({
+      localDx: dx * -fz + dz * fx,
+      localDz: -(dx * fx + dz * fz),
+      dt,
+      crouch: this.crouchBlend,
+      aimPitch: pitch,
+      holding: !def ? 'none' : def.category === 'ranged' ? 'gun' : def.category === 'melee' ? 'melee' : 'item',
+      attacking: this.attackT > 0.3,
+      dead,
+    });
+    this.hand.visible = !dead;
+    this.hand.position.y = height - 0.5;
+    this.hand.rotation.x = pitch * 0.9 + this.attackT * (def?.category === 'melee' ? 1.2 : 0.25);
   }
 }
 

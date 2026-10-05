@@ -27,7 +27,7 @@ export class Input {
       this.keys.add(e.code);
       if (!e.repeat) this.pressed.add(e.code);
       // Stop browser shortcuts (space scrolling, F-keys, etc.) while playing.
-      if (['Space', 'Tab', 'F8'].includes(e.code)) e.preventDefault();
+      if (['Space', 'Tab', 'F8'].includes(e.code) || e.ctrlKey) e.preventDefault();
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => this.keys.clear());
@@ -121,8 +121,9 @@ export class Input {
     let b = 0;
     if (this.down('Space')) b |= Buttons.jump;
     if (this.down('ShiftLeft') || this.down('ShiftRight')) b |= Buttons.sprint;
-    // Not Ctrl: Ctrl+W would close the browser tab mid-sprint.
-    if (this.down('KeyC')) b |= Buttons.crouch;
+    // Ctrl crouches. (Ctrl+W would close the tab: the game goes fullscreen with keyboard lock
+    // where supported, and asks before leaving otherwise - see main.ts.)
+    if (this.down('ControlLeft') || this.down('ControlRight')) b |= Buttons.crouch;
     if (this.aimActive) b |= Buttons.aim;
     return { mx, mz, b };
   }

@@ -38,6 +38,16 @@ export interface WeaponControllerDeps {
   /** Start using a consumable (eat / drink / bandage). */
   useItem: (slot: number) => void;
   toast: (text: string) => void;
+  /**
+   * Where shots come from and go (camera-independent): fills the eye position and a unit
+   * direction towards whatever is under the crosshair. In third person this corrects for the
+   * camera sitting behind the player.
+   */
+  aimRay: (origin: THREE.Vector3, dir: THREE.Vector3) => void;
+  /** Muzzle position for tracers (viewmodel in first person, avatar's hands otherwise). */
+  muzzle: (out: THREE.Vector3) => THREE.Vector3;
+  /** Notified on every attack (third-person body animation). */
+  onAttack?: () => void;
 }
 
 /**
@@ -53,6 +63,7 @@ export class WeaponController {
   aiming = false;
   private readonly tmp = new THREE.Vector3();
   private readonly fwd = new THREE.Vector3();
+  private readonly eye = new THREE.Vector3();
 
   constructor(private readonly d: WeaponControllerDeps) {}
 
@@ -128,7 +139,7 @@ export class WeaponController {
       this.lastAttackAt = now;
       return;
     }
-    const { local, viewmodel, camera, conn } = this.d;
+    const { local, viewmodel, conn } = this.d;
 
     if (w.kind === 'melee') {
       const cost = w.staminaCost ?? 0;
@@ -146,7 +157,8 @@ export class WeaponController {
       this.shootEffects(w);
     }
 
-    camera.getWorldDirection(this.fwd);
+    this.d.aimRay(this.eye, this.fwd);
+    this.d.onAttack?.();
     conn.socket.emit('attack', {
       seq: this.seq,
       dir: [this.fwd.x, this.fwd.y, this.fwd.z],
@@ -161,10 +173,10 @@ export class WeaponController {
 
   /** Predicted muzzle flash, tracers, impacts and recoil (the server's result may differ slightly). */
   private shootEffects(w: WeaponDef): void {
-    const { R, world, local, camera, viewmodel, effects, input } = this.d;
+    const { R, world, local, viewmodel, effects, input } = this.d;
     viewmodel.playFire();
-    camera.getWorldDirection(this.fwd);
-    const muzzle = viewmodel.muzzleWorld(camera, new THREE.Vector3());
+    this.d.aimRay(this.eye, this.fwd);
+    const muzzle = this.d.muzzle(new THREE.Vector3());
     const spread = spreadDegrees(w, local.state, this.aiming);
     const dirs = pelletDirections(this.fwd, spread, w.pellets ?? 1, shotSeed(this.d.shotSalt, this.seq));
     if (w.noiseRadius > 30) effects.muzzleFlash(muzzle, this.fwd);
@@ -172,10 +184,10 @@ export class WeaponController {
     if (w.kind === 'projectile') {
       const d0 = dirs[0];
       const speed = w.projectileSpeed ?? 60;
-      const start = camera.position.clone().addScaledVector(new THREE.Vector3(d0.x, d0.y, d0.z), 0.3);
+      const start = this.eye.clone().addScaledVector(new THREE.Vector3(d0.x, d0.y, d0.z), 0.3);
       effects.spawnBolt(`${this.d.playerId.slice(0, 8)}:${this.seq}`, start, new THREE.Vector3(d0.x * speed, d0.y * speed, d0.z * speed), w.projectileGravity ?? 9.8);
     } else {
-      const o = camera.position;
+      const o = this.eye;
       for (const d of dirs) {
         const ray = new R.Ray({ x: o.x, y: o.y, z: o.z }, d);
         const hit = world.castRay(ray, w.range, true, undefined, PLAYER_GROUPS, local.motor.collider);

@@ -26,7 +26,7 @@ Open a second browser window with a different name to see multiplayer.
 | WASD | Move |
 | Mouse | Look |
 | Shift | Sprint (uses stamina) |
-| C | Crouch |
+| Ctrl | Crouch (the game goes fullscreen so Ctrl+W can't close the tab; hold Esc to leave fullscreen) |
 | Space | Jump |
 | E | Use: open/close doors, search containers, pick up items |
 | Tab / I | Inventory (drag to move, Ctrl+drag split, right-click quick-move, drag outside to drop) |
@@ -35,6 +35,7 @@ Open a second browser window with a different name to see multiplayer.
 | Left click | Attack (fists / melee / shoot), or use held food/drink/medicine |
 | Right click (hold) | Aim down sights (guns) |
 | R | Reload |
+| V | Camera: first person → third person → facing view → first person |
 | F8 | Cycle graphics quality (High / Medium / Low) |
 | Esc | Release mouse / pause |
 

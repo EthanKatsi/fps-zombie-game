@@ -8,6 +8,7 @@ import {
   getItemDef,
   getWeaponDef,
   weaponForItem,
+  aimDirection as aimDirFromAngles,
   CITY,
   PLAYER_GROUPS,
   RENDER,
@@ -26,7 +27,7 @@ import {
 import type { Connection } from '../net/Connection';
 import { Input } from './Input';
 import { LocalPlayer } from './LocalPlayer';
-import { RemotePlayers } from './RemotePlayers';
+import { LocalAvatar, RemotePlayers } from './RemotePlayers';
 import { DoorRenderer, MapRenderer } from './MapRenderer';
 import { GroundItemsView } from './GroundItemsView';
 import { InventoryUI } from '../ui/InventoryUI';
@@ -106,6 +107,12 @@ export class Game {
   private dead = false;
   private readonly tmpV = new THREE.Vector3();
   private lastLook = { yaw: 0, pitch: 0 };
+  /** V cycles: first person -> third person (over the shoulder) -> facing the player -> first. */
+  private cameraMode: 'first' | 'third' | 'front' = 'first';
+  private readonly avatar: LocalAvatar;
+  private readonly eye = new THREE.Vector3();
+  private readonly tmpA = new THREE.Vector3();
+  private readonly tmpB = new THREE.Vector3();
   private readonly rayDir = new THREE.Vector3();
   private target: Target = null;
   private mapMismatch = false;
@@ -197,6 +204,8 @@ export class Game {
     this.remotes = new RemotePlayers(this.scene, join.playerId);
     for (const p of join.players) this.remotes.setName(p.id, p.username);
     this.online = join.players.length;
+    this.avatar = new LocalAvatar(join.playerId);
+    this.scene.add(this.avatar.root);
     this.weapons = new WeaponController({
       R,
       world: this.world,
@@ -211,6 +220,9 @@ export class Game {
       shotSalt: join.shotSalt,
       useItem: (slot) => conn.socket.emit('invOp', { op: 'use', slot }),
       toast: (t) => this.ui.toast(t),
+      aimRay: (o, d) => this.aimRay(o, d),
+      muzzle: (out) => (this.cameraMode === 'first' ? this.viewmodel.muzzleWorld(this.camera, out) : this.avatar.muzzle(out)),
+      onAttack: () => this.avatar.playAttack(),
     });
 
     // --- network ---
@@ -248,6 +260,7 @@ export class Game {
     s.on('stats', (st) => this.hud.setStats(st));
     s.on('damaged', ({ amount, from }) => {
       this.hud.hit(amount);
+      this.avatar.hit();
       if (from) {
         // Angle of the attacker relative to where we're looking (0 = ahead, + = to the right).
         const me = this.local.state.pos;
@@ -368,6 +381,10 @@ export class Game {
       this.conn.socket.emit('invOp', { op: 'select', hotbar: active });
     }
     if (this.input.consumePress('F8')) this.cycleQuality();
+    if (this.input.consumePress('KeyV')) {
+      this.cameraMode = this.cameraMode === 'first' ? 'third' : this.cameraMode === 'third' ? 'front' : 'first';
+      this.ui.toast(this.cameraMode === 'first' ? 'First person' : this.cameraMode === 'third' ? 'Third person' : 'Facing view');
+    }
     const held = this.inventoryUI.inventory?.slots[active];
     if (this.input.consumePress('KeyQ') && held) {
       this.conn.socket.emit('invOp', { op: 'drop', from: { owner: 'self', index: active } });
@@ -421,6 +438,7 @@ export class Game {
     if (batch.length) this.conn.socket.emit('input', batch);
 
     this.local.updateCamera(this.camera, this.accumulator / TICK_DT, dt);
+    this.applyCameraMode(dt);
     this.hud.update(dt);
     const inv = this.inventoryUI.inventory;
     const playing = !this.inventoryUI.isOpen && !this.dead;
@@ -428,6 +446,7 @@ export class Game {
       this.updateHotbarInput();
       this.updateInteraction();
       if (inv) this.weapons.update(dt, inv, this.inventoryUI.activeHotbar, this.hud.using);
+      if (this.cameraMode === 'front') this.combatHud.setCrosshair(0, false); // looking at yourself
     }
     this.updateAim(dt);
     this.remotes.update(this.conn.serverNow(), dt);
@@ -441,7 +460,7 @@ export class Game {
     // Pass 1: the world (+ post-processing). Pass 2: the first-person viewmodel on top.
     this.postfx.render(dt);
     const v = this.local.state.vel;
-    this.viewmodel.visible = !this.dead && !this.scoped;
+    this.viewmodel.visible = !this.dead && !this.scoped && this.cameraMode === 'first';
     const look = { dyaw: this.input.yaw - this.lastLook.yaw, dpitch: this.input.pitch - this.lastLook.pitch };
     this.lastLook = { yaw: this.input.yaw, pitch: this.input.pitch };
     this.viewmodel.update(
@@ -470,15 +489,77 @@ export class Game {
       this.camera.fov += (target - this.camera.fov) * (1 - Math.exp(-dt * 16));
       this.camera.updateProjectionMatrix();
     }
-    this.scoped = this.weapons.aiming && w.id === 'rifle' && this.camera.fov < (w.adsFov ?? BASE_FOV) + 6;
+    this.scoped = this.cameraMode === 'first' && this.weapons.aiming && w.id === 'rifle' && this.camera.fov < (w.adsFov ?? BASE_FOV) + 6;
     this.combatHud.setScope(this.scoped);
+  }
+
+  /**
+   * Third-person / facing camera. The first-person camera (with head-bob) has just been placed
+   * at the eye; remember that, then move the camera out, stopping short of walls.
+   */
+  private applyCameraMode(dt: number): void {
+    this.eye.copy(this.camera.position);
+    const showBody = this.cameraMode !== 'first';
+    this.avatar.root.visible = showBody;
+    if (showBody) {
+      const inv = this.inventoryUI.inventory;
+      this.avatar.setHeld(inv?.slots[this.inventoryUI.activeHotbar]?.defId ?? '');
+      this.avatar.update(this.local.renderFeet, this.input.yaw, this.input.pitch, this.local.state.crouching, this.dead, dt);
+    }
+    if (this.cameraMode === 'first') return;
+
+    const yaw = this.input.yaw, pitch = this.input.pitch;
+    const right = this.tmpA.set(Math.cos(yaw), 0, -Math.sin(yaw));
+    const desired = this.tmpB.copy(this.eye);
+    if (this.cameraMode === 'third') {
+      const f = aimDirFromAngles(yaw, pitch);
+      desired.x += -f.x * 3.0 + right.x * 0.55;
+      desired.y += -f.y * 3.0 + 0.3;
+      desired.z += -f.z * 3.0 + right.z * 0.55;
+    } else {
+      desired.x += -Math.sin(yaw) * 2.2;
+      desired.y += 0.05;
+      desired.z += -Math.cos(yaw) * 2.2;
+    }
+    // Don't put the camera inside walls: pull it in front of whatever is between it and the eye.
+    const dir = this.tmpA.copy(desired).sub(this.eye);
+    const dist = dir.length();
+    dir.divideScalar(dist);
+    const ray = new this.R.Ray({ x: this.eye.x, y: this.eye.y, z: this.eye.z }, { x: dir.x, y: dir.y, z: dir.z });
+    const hit = this.world.castRay(ray, dist, true, undefined, PLAYER_GROUPS, this.local.motor.collider);
+    const t = hit ? Math.max(0.2, hit.timeOfImpact - 0.25) : dist;
+    this.camera.position.copy(this.eye).addScaledVector(dir, t);
+    if (this.cameraMode === 'third') this.camera.rotation.set(pitch, yaw, 0, 'YXZ');
+    else this.camera.lookAt(this.eye.x, this.eye.y - 0.1, this.eye.z);
+  }
+
+  /**
+   * The ray shots and E-interactions use: from the player's eye towards what the crosshair is
+   * on. (In third person the camera is behind you, so aim at the crosshair's target point.)
+   */
+  private aimRay(origin: THREE.Vector3, dir: THREE.Vector3): void {
+    origin.copy(this.eye);
+    if (this.cameraMode === 'first') {
+      this.camera.getWorldDirection(dir);
+      return;
+    }
+    const a = aimDirFromAngles(this.input.yaw, this.input.pitch);
+    if (this.cameraMode === 'front') {
+      dir.set(a.x, a.y, a.z);
+      return;
+    }
+    const c = this.camera.position;
+    const ray = new this.R.Ray({ x: c.x, y: c.y, z: c.z }, a);
+    const hit = this.world.castRay(ray, 250, true, undefined, PLAYER_GROUPS, this.local.motor.collider);
+    const t = hit ? hit.timeOfImpact : 250;
+    dir.set(c.x + a.x * t - origin.x, c.y + a.y * t - origin.y, c.z + a.z * t - origin.z).normalize();
   }
 
   /** Look-at raycast: what would E interact with? Ground items > doors > containers. */
   private updateInteraction(): void {
-    this.camera.getWorldDirection(this.rayDir);
-    const o = this.camera.position;
+    const o = this.tmpB;
     const d = this.rayDir;
+    this.aimRay(o, d);
     const range = INVENTORY.useRange;
     const ray = new this.R.Ray({ x: o.x, y: o.y, z: o.z }, { x: d.x, y: d.y, z: d.z });
     const hit = this.world.castRay(ray, range, true, undefined, PLAYER_GROUPS, this.local.motor.collider);

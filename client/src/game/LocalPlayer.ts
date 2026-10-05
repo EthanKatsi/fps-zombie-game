@@ -35,6 +35,8 @@ export class LocalPlayer {
   private wasGrounded = true;
   private lastFallSpeed = 0;
   private lastCamPos = new THREE.Vector3();
+  /** Interpolated feet position used for this frame's camera (the avatar stands here). */
+  readonly renderFeet = new THREE.Vector3();
 
   constructor(R: Rapier, world: World, initial: MoveState, private readonly input: Input) {
     this.state = cloneMoveState(initial);
@@ -98,6 +100,7 @@ export class LocalPlayer {
     const x = a.x + (b.x - a.x) * alpha + this.errorOffset.x;
     const y = a.y + (b.y - a.y) * alpha + this.errorOffset.y;
     const z = a.z + (b.z - a.z) * alpha + this.errorOffset.z;
+    this.renderFeet.set(x, y, z);
 
     // Footsteps: phase advances with horizontal distance (one step ~0.75 m walking, 1.1 m sprinting).
     const moved = Math.hypot(x - this.lastCamPos.x, z - this.lastCamPos.z);
