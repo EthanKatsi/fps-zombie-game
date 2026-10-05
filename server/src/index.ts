@@ -10,6 +10,7 @@ import { openDatabase } from './db/Database';
 import { SqlitePlayerRepository } from './db/PlayerRepository';
 import { GuestAuthProvider } from './auth/AuthProvider';
 import { GameServer } from './game/GameServer';
+import { createAdmin } from './admin';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const serverRoot = path.resolve(here, '..');
@@ -49,7 +50,12 @@ const main = async () => {
   const db = openDatabase(path.resolve(serverRoot, SERVER_CONFIG.dbPath));
   const repo = new SqlitePlayerRepository(db);
 
-  const httpServer = http.createServer(staticHandler(path.resolve(serverRoot, SERVER_CONFIG.clientDist)));
+  const serveStatic = staticHandler(path.resolve(serverRoot, SERVER_CONFIG.clientDist));
+  let admin: ((req: http.IncomingMessage, res: http.ServerResponse) => Promise<boolean>) | null = null;
+  const httpServer = http.createServer(async (req, res) => {
+    if (admin && (await admin(req, res))) return;
+    serveStatic(req, res);
+  });
   const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
     cors: { origin: SERVER_CONFIG.corsOrigins },
     transports: ['websocket'],
@@ -57,6 +63,7 @@ const main = async () => {
 
   const game = new GameServer(RAPIER, io, repo, new GuestAuthProvider());
   game.start();
+  admin = createAdmin(path.resolve(serverRoot, 'data'), game, repo);
 
   httpServer.listen(SERVER_CONFIG.port, () => {
     console.log(`[server] listening on http://localhost:${SERVER_CONFIG.port}`);

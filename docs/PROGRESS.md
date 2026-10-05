@@ -164,6 +164,16 @@ Other commits: menu retitle to "The Walking Dead" (`8937010`).
 - **Not yet**: lag compensation (M7). The server currently tests against present positions, so fast-moving targets
   are a little harder to hit at high ping. Structure damage from melee comes in M10.
 
+## Admin / testing tools
+
+`server/src/admin.ts` is a local-only HTTP admin API. Requests must come from this machine and carry the token
+the server writes to `server/data/admin-token.txt` on every start (the file is gitignored).
+- `GET /admin/players`: who's online, with position and health.
+- `POST /admin/teleport` with `{"username":"kats","to":"police"}` (any building type) or `{"username":..., "x":..,"y":..,"z":..}`.
+  Offline players are moved in the DB instead.
+- Example (bash, one line): `curl -s -X POST -H "x-admin-token: $(cat server/data/admin-token.txt)" -d '{"username":"kats","to":"police"}' http://localhost:2567/admin/teleport`
+- Note: the `!` prefix in Claude Code runs **bash**, not PowerShell.
+
 ## Tests (run `npm test`)
 
 - `shared/test/movement.test.ts`: physics, determinism, crouch, stairs.
