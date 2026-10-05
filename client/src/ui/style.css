@@ -69,9 +69,10 @@ body {
 
 h1 {
   margin: 0 0 6px;
-  letter-spacing: 0.35em;
+  letter-spacing: 0.18em;
   font-weight: 800;
-  font-size: 40px;
+  font-size: clamp(26px, 4.5vw, 40px);
+  text-transform: uppercase;
   color: #e6e1d3;
   text-shadow: 0 2px 0 var(--blood);
 }
