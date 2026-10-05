@@ -16,6 +16,4 @@ export const SURVIVAL = {
   health: { max: 100 },
   hunger: { max: 100, drainPerMin: 1.2 },
   thirst: { max: 100, drainPerMin: 1.8 },
-  /** Carry capacity in kg. */
-  maxCarryWeight: 30,
 } as const;

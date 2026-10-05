@@ -1,8 +1,11 @@
 import * as THREE from 'three';
 import type { World } from '@dimforge/rapier3d-compat';
 import {
-  DOOR_USE_RANGE,
+  CONTAINER_NAMES,
+  ContainerIndex,
   DoorColliders,
+  INVENTORY,
+  getItemDef,
   PLAYER_GROUPS,
   RENDER,
   SURVIVAL,
@@ -12,23 +15,28 @@ import {
   loadMap,
   type JoinAccepted,
   type MapData,
+  type InteractRequest,
   type MoveInput,
   type Rapier,
+  type SlotRef,
 } from '@grey/shared';
 import type { Connection } from '../net/Connection';
 import { Input } from './Input';
 import { LocalPlayer } from './LocalPlayer';
 import { RemotePlayers } from './RemotePlayers';
 import { DoorRenderer, MapRenderer } from './MapRenderer';
+import { GroundItemsView } from './GroundItemsView';
+import { InventoryUI } from '../ui/InventoryUI';
 
 export interface GameUi {
   setPaused(paused: boolean): void;
   setStamina(fraction: number): void;
   setDebug(text: string): void;
   setPrompt(text: string | null): void;
+  toast(text: string): void;
 }
 
-type Target = { kind: 'door'; id: number } | null;
+type Target = InteractRequest | null;
 
 export class Game {
   private readonly renderer: THREE.WebGLRenderer;
@@ -43,6 +51,9 @@ export class Game {
   private readonly input: Input;
   private readonly local: LocalPlayer;
   private readonly remotes: RemotePlayers;
+  private readonly containerIndex: ContainerIndex;
+  private readonly groundItems: GroundItemsView;
+  private readonly inventoryUI: InventoryUI;
   private readonly rayDir = new THREE.Vector3();
   private target: Target = null;
   private mapMismatch = false;
@@ -110,10 +121,23 @@ export class Game {
     this.world.step();
     this.doorRenderer = new DoorRenderer(this.map.doors, this.doorColliders.open);
     this.scene.add(this.doorRenderer.mesh);
+    this.containerIndex = new ContainerIndex(this.map.containers);
+    this.groundItems = new GroundItemsView(this.scene);
+
+    // --- items UI (pure view; every change goes through the server) ---
+    this.inventoryUI = new InventoryUI({
+      move: (from: SlotRef, to: SlotRef, qty?: number) => conn.socket.emit('invOp', { op: 'move', from, to, qty }),
+      drop: (from: SlotRef, qty?: number) => conn.socket.emit('invOp', { op: 'drop', from, qty }),
+      craft: (recipeId: string) => conn.socket.emit('invOp', { op: 'craft', recipeId }),
+    });
+    this.inventoryUI.setInventory(join.inventory);
+    this.inventoryUI.setActive(join.inventory.activeHotbar);
+    window.addEventListener('keydown', this.onUiKey);
 
     // --- players ---
     this.input = new Input(this.renderer.domElement);
-    this.input.onLockChange = (locked) => this.ui.setPaused(!locked);
+    // Unlocking the mouse for the inventory screen is not a pause.
+    this.input.onLockChange = (locked) => this.ui.setPaused(!locked && !this.inventoryUI.isOpen);
     this.local = new LocalPlayer(R, this.world, join.state, this.input);
     this.remotes = new RemotePlayers(this.scene, join.playerId);
     for (const p of join.players) this.remotes.setName(p.id, p.username);
@@ -139,11 +163,65 @@ export class Game {
       this.world.step(); // keep the prediction world's scene queries in sync
       this.doorRenderer.setOpen(id, isOpen);
     });
+    s.on('inventory', (inv) => this.inventoryUI.setInventory(inv));
+    s.on('containerOpened', (c) => {
+      this.inventoryUI.setContainer(c);
+      if (!this.inventoryUI.isOpen) this.openInventory();
+    });
+    s.on('containerUpdate', ({ key, slots }) => this.inventoryUI.updateContainer(key, slots));
+    s.on('containerClosed', ({ key }) => {
+      if (this.inventoryUI.openContainerKey === key) this.inventoryUI.setContainer(null);
+    });
+    s.on('groundItems', (msg) => this.groundItems.apply(msg));
+    s.on('notice', ({ text }) => this.ui.toast(text));
 
     window.addEventListener('resize', this.onResize);
     this.renderer.domElement.addEventListener('click', () => this.input.requestLock());
     this.input.requestLock();
     requestAnimationFrame(this.frame);
+  }
+
+  private openInventory(): void {
+    this.inventoryUI.open();
+    this.ui.setPrompt(null);
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
+
+  private closeInventory(relock: boolean): void {
+    if (this.inventoryUI.openContainerKey) this.conn.socket.emit('closeContainer');
+    this.inventoryUI.close();
+    if (relock) this.input.requestLock();
+    else this.ui.setPaused(!this.input.locked);
+  }
+
+  /** Keys while the inventory screen is open (pointer unlocked, so Input ignores them). */
+  private onUiKey = (e: KeyboardEvent) => {
+    if (!this.inventoryUI.isOpen) return;
+    if (e.code === 'Tab' || e.code === 'KeyE' || e.code === 'KeyI') {
+      e.preventDefault();
+      this.closeInventory(true);
+    } else if (e.code === 'Escape') {
+      this.closeInventory(false);
+    }
+  };
+
+  /** Hotbar keys, wheel, inventory toggle and quick drop (while playing). */
+  private updateHotbarInput(): void {
+    if (this.input.consumePress('Tab') || this.input.consumePress('KeyI')) {
+      this.openInventory();
+      return;
+    }
+    let active = this.inventoryUI.activeHotbar;
+    for (let i = 0; i < INVENTORY.hotbarSize; i++) if (this.input.consumePress(`Digit${i + 1}`)) active = i;
+    const wheel = this.input.consumeWheel();
+    if (wheel) active = (((active + wheel) % INVENTORY.hotbarSize) + INVENTORY.hotbarSize) % INVENTORY.hotbarSize;
+    if (active !== this.inventoryUI.activeHotbar) {
+      this.inventoryUI.setActive(active);
+      this.conn.socket.emit('invOp', { op: 'select', hotbar: active });
+    }
+    if (this.input.consumePress('KeyQ') && this.inventoryUI.inventory?.slots[active]) {
+      this.conn.socket.emit('invOp', { op: 'drop', from: { owner: 'self', index: active } });
+    }
   }
 
   /** Called by the overlay when the player clicks "resume". */
@@ -173,7 +251,10 @@ export class Game {
     if (batch.length) this.conn.socket.emit('input', batch);
 
     this.local.updateCamera(this.camera, this.accumulator / TICK_DT, dt);
-    this.updateInteraction();
+    if (!this.inventoryUI.isOpen) {
+      this.updateHotbarInput();
+      this.updateInteraction();
+    }
     this.remotes.update(this.conn.serverNow(), dt);
     this.doorRenderer.update(dt);
     this.mapRenderer.update(this.camera.position);
@@ -183,23 +264,39 @@ export class Game {
     this.updateHud(dt);
   };
 
-  /** Look-at raycast: what would E interact with? */
+  /** Look-at raycast: what would E interact with? Ground items > doors > containers. */
   private updateInteraction(): void {
     this.camera.getWorldDirection(this.rayDir);
     const o = this.camera.position;
-    const ray = new this.R.Ray({ x: o.x, y: o.y, z: o.z }, { x: this.rayDir.x, y: this.rayDir.y, z: this.rayDir.z });
-    const hit = this.world.castRay(ray, DOOR_USE_RANGE, true, undefined, PLAYER_GROUPS, this.local.motor.collider);
-    const doorId = hit ? this.doorColliders.byHandle.get(hit.collider.handle) : undefined;
-    this.target = doorId !== undefined ? { kind: 'door', id: doorId } : null;
+    const d = this.rayDir;
+    const range = INVENTORY.useRange;
+    const ray = new this.R.Ray({ x: o.x, y: o.y, z: o.z }, { x: d.x, y: d.y, z: d.z });
+    const hit = this.world.castRay(ray, range, true, undefined, PLAYER_GROUPS, this.local.motor.collider);
+    const hitDist = hit ? hit.timeOfImpact : range;
 
-    if (this.target) {
-      this.ui.setPrompt(this.doorColliders.open[this.target.id] ? 'Close door' : 'Open door');
-    } else {
-      this.ui.setPrompt(null);
+    let prompt: string | null = null;
+    this.target = null;
+    const item = this.groundItems.pick(o, d, hitDist + 0.15);
+    if (item) {
+      const name = getItemDef(item.item.defId)?.name ?? item.item.defId;
+      this.target = { kind: 'pickup', id: item.item.id };
+      prompt = `Pick up ${name}${item.item.qty > 1 ? ` ×${item.item.qty}` : ''}`;
+    } else if (hit) {
+      const doorId = this.doorColliders.byHandle.get(hit.collider.handle);
+      if (doorId !== undefined) {
+        this.target = { kind: 'door', id: doorId };
+        prompt = this.doorColliders.open[doorId] ? 'Close door' : 'Open door';
+      } else {
+        const t = hit.timeOfImpact;
+        const c = this.containerIndex.atPoint(o.x + d.x * t, o.y + d.y * t, o.z + d.z * t);
+        if (c) {
+          this.target = { kind: 'container', id: c.id };
+          prompt = `Search ${CONTAINER_NAMES[c.kind]}`;
+        }
+      }
     }
-    if (this.input.consumePress('KeyE') && this.target) {
-      this.conn.socket.emit('interact', this.target);
-    }
+    this.ui.setPrompt(prompt);
+    if (this.input.consumePress('KeyE') && this.target) this.conn.socket.emit('interact', this.target);
   }
 
   /** Keep the shadow frustum centered on the player, snapped to shadow texels to avoid shimmer. */
@@ -227,7 +324,7 @@ export class Game {
           `${this.fps} fps · ${info.calls} draws · ${(info.triangles / 1000).toFixed(0)}k tris · ${Math.round(this.conn.rtt)} ms ping`,
           `pos ${p.x.toFixed(1)} ${p.y.toFixed(1)} ${p.z.toFixed(1)}${this.local.state.grounded ? '' : ' (air)'}`,
           `pending ${this.local.pendingCount} · last correction ${this.local.lastCorrection.toFixed(3)} m`,
-          `players ${this.online} online, ${this.remotes.count} nearby`,
+          `players ${this.online} online, ${this.remotes.count} nearby · ${this.groundItems.count} items near`,
         ]
           .filter(Boolean)
           .join('\n'),
@@ -238,6 +335,8 @@ export class Game {
   dispose(): void {
     this.running = false;
     window.removeEventListener('resize', this.onResize);
+    window.removeEventListener('keydown', this.onUiKey);
+    this.inventoryUI.close();
     this.renderer.dispose();
     this.renderer.domElement.remove();
     this.world.free();

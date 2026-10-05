@@ -34,14 +34,27 @@ export interface Container {
 
 /** Client -> server inventory operations. The server validates every one of these. */
 export type InventoryOp =
+  /** to.index = -1 means "first place it fits" (quick transfer). */
   | { op: 'move'; from: SlotRef; to: SlotRef; qty?: number }
   | { op: 'drop'; from: SlotRef; qty?: number }
   | { op: 'use'; slot: number }
   | { op: 'select'; hotbar: number }
   | { op: 'craft'; recipeId: string };
 
+export const CONTAINER_NAMES: Record<ContainerKind, string> = {
+  cabinet: 'Cabinet',
+  fridge: 'Fridge',
+  shelf: 'Shelf',
+  locker: 'Locker',
+  car_trunk: 'Car Trunk',
+  desk: 'Desk',
+  crate: 'Crate',
+  storage_chest: 'Storage Chest',
+  loot_bag: 'Bag',
+};
+
 export interface SlotRef {
-  /** 'self' = own inventory, otherwise an open container id. */
+  /** 'self' = own inventory, otherwise the key of the open container. */
   owner: 'self' | string;
   index: number;
 }

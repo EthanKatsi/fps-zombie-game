@@ -13,7 +13,10 @@ import {
   doorSweepBlocked,
   eyeHeight,
   hashMap,
+  insertStack,
   loadMap,
+  makeItem,
+  INVENTORY,
   type InteractRequest,
   type JoinRequest,
   type MapData,
@@ -25,6 +28,8 @@ import type { AuthProvider } from '../auth/AuthProvider';
 import type { PlayerRepository } from '../db/PlayerRepository';
 import { SERVER_CONFIG } from '../config';
 import { ServerPlayer } from './ServerPlayer';
+import { InventorySystem } from './InventorySystem';
+import { makeUid } from './ContainerSystem';
 import type { GameIO, GameSocket } from './types';
 
 const r2 = (n: number): number => Math.round(n * 100) / 100;
@@ -37,6 +42,7 @@ export class GameServer {
   readonly map: MapData;
   readonly mapHash: string;
   readonly doors: DoorColliders;
+  readonly items: InventorySystem;
   private doorsDirty = false;
   /** Door id -> time (ms) until which it can't be toggled again (swing animation). */
   private readonly doorBusyUntil = new Map<number, number>();
@@ -62,6 +68,7 @@ export class GameServer {
     buildMapColliders(R, this.world, this.map);
     this.doors = new DoorColliders(R, this.world, this.map.doors);
     this.world.step(); // populate the broad-phase so scene queries see the map
+    this.items = new InventorySystem(R, this.world, this.map, () => this.players.values());
     console.log(`[game] world built in ${Math.round(performance.now() - t0)} ms`);
     io.on('connection', (s) => this.onConnection(s));
   }
@@ -129,11 +136,18 @@ export class GameServer {
     socket.on('interact', (req) => {
       if (player) this.handleInteract(player, req);
     });
+    socket.on('invOp', (op) => {
+      if (player) this.items.handleOp(player, op);
+    });
+    socket.on('closeContainer', () => {
+      if (player) this.items.closeContainer(player);
+    });
 
     socket.on('disconnect', () => {
       if (!player) return;
       const p = player;
       this.players.delete(p.id);
+      this.items.onLeave(p);
       p.dispose();
       this.io.emit('playerLeft', { id: p.id });
       console.log(`[game] ${p.username} left (${this.players.size} online)`);
@@ -163,6 +177,13 @@ export class GameServer {
       const record = existing ?? (await this.repo.create(auth.username, this.randomSpawn()));
       if (!socket.connected) return null;
 
+      if (!existing) {
+        // Fresh survivor: hand out the starting kit.
+        for (const k of INVENTORY.startingKit) {
+          const stack = makeItem(k.item, k.qty, makeUid, Math.random);
+          if (stack) insertStack(record.inventory.slots, stack, k.qty, makeUid);
+        }
+      }
       let spawn = record.position;
       if (!existing || !this.isValidPosition(spawn)) {
         spawn = existing ? this.randomSpawn() : record.position;
@@ -181,6 +202,7 @@ export class GameServer {
         mapSeed: this.map.seed,
         mapHash: this.mapHash,
         openDoors: this.doors.openIds(),
+        inventory: player.inventory,
         players: [...this.players.values()].map((p) => ({ id: p.id, username: p.username })),
       });
       socket.broadcast.emit('playerJoined', { id: player.id, username: player.username });
@@ -215,6 +237,8 @@ export class GameServer {
     if (now < p.nextInteractAt) return;
     p.nextInteractAt = now + 200;
     if (req?.kind === 'door' && Number.isInteger(req.id)) this.toggleDoor(p, req.id, now);
+    else if (req?.kind === 'container') this.items.openMapContainer(p, req.id);
+    else if (req?.kind === 'pickup') this.items.pickup(p, req.id);
   }
 
   private toggleDoor(p: ServerPlayer, id: number, now: number): void {
@@ -259,6 +283,8 @@ export class GameServer {
         p.teleport(spawn, yawTowardCenter(spawn));
       }
     }
+
+    if (this.tick % 10 === 0) this.items.update([...this.players.values()], performance.now());
 
     this.snapshotAcc += NETWORK.snapshotRate / NETWORK.tickRate;
     if (this.snapshotAcc >= 1) {

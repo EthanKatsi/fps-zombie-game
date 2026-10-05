@@ -14,6 +14,7 @@ export class Input {
   sensitivity = 0.0022;
   locked = false;
   private skipNextMove = false;
+  private wheel = 0;
   onLockChange: (locked: boolean) => void = () => {};
 
   constructor(private readonly element: HTMLElement) {
@@ -43,6 +44,14 @@ export class Input {
       this.pitch = clamp(this.pitch - dy * this.sensitivity, -PITCH_LIMIT, PITCH_LIMIT);
     });
 
+    document.addEventListener(
+      'wheel',
+      (e) => {
+        if (this.locked && e.deltaY !== 0) this.wheel += Math.sign(e.deltaY);
+      },
+      { passive: true },
+    );
+
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === this.element;
       this.skipNextMove = this.locked;
@@ -67,6 +76,13 @@ export class Input {
     } catch {
       plain();
     }
+  }
+
+  /** Accumulated wheel notches since the last call (+ = down). */
+  consumeWheel(): number {
+    const w = this.wheel;
+    this.wheel = 0;
+    return w;
   }
 
   /** True once per physical key press. */

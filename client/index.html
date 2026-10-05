@@ -20,7 +20,7 @@
             <button type="submit" id="join-btn">Enter the city</button>
           </form>
           <p id="menu-error" class="error"></p>
-          <p class="hint">WASD move · Mouse look · Shift sprint · C crouch · Space jump · E use · Esc pause</p>
+          <p class="hint">WASD move · Mouse look · Shift sprint · C crouch · Space jump · E use · Tab inventory · 1-9 hotbar · Q drop · Esc pause</p>
         </div>
       </section>
 
@@ -32,6 +32,36 @@
           <div class="bar"><span class="label">STA</span><div class="track"><div id="stamina-fill" class="fill stamina"></div></div></div>
         </div>
         <pre id="debug"></pre>
+        <div id="held-name"></div>
+        <div id="hotbar"></div>
+        <div id="toast"></div>
+      </section>
+
+      <!-- Inventory (Tab) -->
+      <section id="inventory" class="screen hidden">
+        <div class="inv-wrap">
+          <div class="panel" id="inv-player">
+            <div class="panel-head">
+              <h3>Survivor</h3>
+              <span id="inv-weight"></span>
+            </div>
+            <div class="weight-track"><div id="inv-weight-fill"></div></div>
+            <div class="section-label">Hotbar</div>
+            <div class="grid" id="inv-hotbar"></div>
+            <div class="section-label">Backpack</div>
+            <div class="grid" id="inv-backpack"></div>
+          </div>
+          <div class="panel hidden" id="inv-container">
+            <div class="panel-head"><h3 id="inv-container-title"></h3></div>
+            <div class="grid" id="inv-container-grid"></div>
+          </div>
+          <div class="panel" id="inv-craft">
+            <div class="panel-head"><h3>Crafting</h3></div>
+            <div id="craft-list"></div>
+          </div>
+        </div>
+        <p class="inv-help">Drag to move · Ctrl+drag to split · Right-click to quick-move · Drag outside to drop · Tab to close</p>
+        <div id="tooltip" class="hidden"></div>
       </section>
 
       <!-- Pause / click-to-play overlay -->

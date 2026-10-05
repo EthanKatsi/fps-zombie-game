@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { SURVIVAL, type PlayerRecord, type Vec3 } from '@grey/shared';
+import { SURVIVAL, createInventory, type PlayerRecord, type Vec3 } from '@grey/shared';
 import type { SqliteDb } from './Database';
 
 /**
@@ -70,7 +70,7 @@ export class SqlitePlayerRepository implements PlayerRepository {
         stamina: SURVIVAL.stamina.max,
         bleeding: false,
       },
-      inventory: { slots: [], activeHotbar: 0 },
+      inventory: createInventory(),
       groupId: null,
       spawnBedId: null,
       kills: 0,

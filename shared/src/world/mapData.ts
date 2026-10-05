@@ -70,6 +70,8 @@ export interface ContainerSpawn {
   kind: ContainerKind;
   /** Center of the furniture box. */
   p: [number, number, number];
+  /** World axis-aligned size of the furniture box; absent for car trunks (use a radius). */
+  s?: [number, number, number];
   /** Loot table id, e.g. 'grocery_shelf' or 'street_car_trunk'. */
   lootTable: string;
   buildingId: number | null;

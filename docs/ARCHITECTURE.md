@@ -77,6 +77,18 @@ sides move the door collider in their physics world, so prediction stays in sync
   texels to avoid shimmer.
 - All doors share one instanced mesh, and swings are animated by rewriting instance matrices.
 
+## Items & looting (milestone 3)
+
+- Static item data: `shared/src/config/items.ts`. Loot: `config/loot.ts`. Recipes: `config/crafting.ts`.
+  Limits: `config/inventory.ts`.
+- `shared/src/inventory/inventory.ts` holds the pure slot rules, shared by server and tests.
+  The client never mutates items; it renders the server's `inventory` / `containerUpdate` messages.
+- Server: `ContainerSystem` (lazy fill, timed re-roll, viewers), `GroundItems` (interest-managed drops),
+  `InventorySystem` (validates every `invOp`: ownership, range, line of sight, weight).
+- Looking at a container: the client raycasts its physics world, and `ContainerIndex.atPoint(hit)` maps the
+  hit point to a container box. The server repeats the ray from the player's eye and requires the first hit to
+  be inside that container, which prevents looting through walls.
+
 ## Networking model
 
 - **Transport**: Socket.IO over WebSocket only. JSON for now; a binary codec can replace it behind `protocol.ts`.

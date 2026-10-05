@@ -2,7 +2,9 @@ import {
   CharacterMotor,
   NETWORK,
   createMoveState,
+  normalizeInventory,
   sanitizeInput,
+  type Inventory,
   type MoveInput,
   type MoveState,
   type PlayerRecord,
@@ -11,6 +13,7 @@ import {
 } from '@grey/shared';
 import type { World } from '@dimforge/rapier3d-compat';
 import type { GameSocket } from './types';
+import type { WorldContainer } from './ContainerSystem';
 
 export class ServerPlayer {
   state: MoveState;
@@ -22,6 +25,10 @@ export class ServerPlayer {
   private credit = 0;
   /** Rate limit for E-presses (ms, performance.now clock). */
   nextInteractAt = 0;
+  /** Container the player currently has open (inventory screen). */
+  openContainer: WorldContainer | null = null;
+  /** Ground item ids this client has been told about (interest management). */
+  knownGround = new Set<string>();
 
   constructor(
     R: Rapier,
@@ -30,6 +37,7 @@ export class ServerPlayer {
     readonly record: PlayerRecord,
     spawn: Vec3,
   ) {
+    record.inventory = normalizeInventory(record.inventory);
     this.state = createMoveState(spawn, record.yaw);
     this.state.stamina = record.stats.stamina;
     this.motor = new CharacterMotor(R, world, this.state);
@@ -41,6 +49,11 @@ export class ServerPlayer {
 
   get username(): string {
     return this.record.username;
+  }
+
+  /** Live inventory (persisted as part of the player record). */
+  get inventory(): Inventory {
+    return this.record.inventory;
   }
 
   enqueueInputs(raw: unknown): void {

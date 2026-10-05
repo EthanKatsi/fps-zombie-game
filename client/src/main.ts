@@ -16,6 +16,8 @@ const staminaFill = $('stamina-fill');
 const debug = $('debug');
 const prompt = $('prompt');
 const promptText = $('prompt-text');
+const toast = $('toast');
+let toastTimer = 0;
 
 const rapierReady = RAPIER.init();
 usernameInput.value = localStorage.getItem('grey.username') ?? '';
@@ -51,6 +53,12 @@ form.addEventListener('submit', async (e) => {
       setPrompt: (t) => {
         prompt.classList.toggle('hidden', t === null);
         if (t !== null && promptText.textContent !== t) promptText.textContent = t;
+      },
+      toast: (t) => {
+        toast.textContent = t;
+        toast.classList.add('show');
+        window.clearTimeout(toastTimer);
+        toastTimer = window.setTimeout(() => toast.classList.remove('show'), 1800);
       },
     });
     conn.socket.on('disconnect', () => showMenu('Disconnected from server.'));

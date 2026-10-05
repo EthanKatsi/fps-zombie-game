@@ -312,14 +312,16 @@ export const buildBuilding = (
       if (z + f.w > z1 - 0.2) break;
       const x0 = side === 'left' ? T : W - T - f.d;
       push(fr.box(x0, x0 + f.d, y, y + f.h, z, z + f.w, f.m, { d: true }));
-      if (f.kind) addContainer(f.kind, x0 + f.d / 2, y + f.h / 2, z + f.w / 2);
+      if (f.kind) addContainer(f.kind, x0 + f.d / 2, y + f.h / 2, z + f.w / 2, f.d, f.h, f.w);
       z += f.w + 0.15 + rand() * 0.9;
     }
   };
 
-  const addContainer = (kind: ContainerKind, lx: number, y: number, lz: number) => {
+  /** Register lootable furniture; (sx, sy, sz) is its local box size. */
+  const addContainer = (kind: ContainerKind, lx: number, y: number, lz: number, sx: number, sy: number, sz: number) => {
     const [x, z] = fr.pt(lx, lz);
-    ctx.containers.push({ id: ctx.containers.length, kind, p: [x, y, z], lootTable: `${type}_${kind}`, buildingId: id });
+    const s: [number, number, number] = fr.q % 2 === 1 ? [sz, sy, sx] : [sx, sy, sz];
+    ctx.containers.push({ id: ctx.containers.length, kind, p: [x, y, z], s, lootTable: `${type}_${kind}`, buildingId: id });
   };
 
   /** Free-standing double-sided shelf rows / display cases through a shop's sales floor. */
@@ -333,13 +335,13 @@ export const buildBuilding = (
         const m = gun ? 'glasscase' : 'metal';
         const h = gun ? 1.0 : 1.6;
         push(fr.box(cxRow - 0.5, cxRow + 0.5, y, y + h, z, z + len, m, { d: true }));
-        addContainer(gun ? 'cabinet' : 'shelf', cxRow, y + h / 2, z + len / 2);
+        addContainer(gun ? 'cabinet' : 'shelf', cxRow, y + h / 2, z + len / 2, 1.0, h, len);
       }
     }
     // Checkout counter near the entrance.
     const cx0 = W - T - 3.2;
     push(fr.box(cx0, cx0 + 2.4, y, y + 1.0, z0 + 1.0, z0 + 1.8, 'counter', { d: true }));
-    addContainer('cabinet', cx0 + 1.2, y + 0.5, z0 + 1.4);
+    addContainer('cabinet', cx0 + 1.2, y + 0.5, z0 + 1.4, 2.4, 1.0, 0.8);
   };
 
   // ---- floors
