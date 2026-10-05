@@ -95,7 +95,8 @@ export class WeaponController {
       if (input.consumePress('Mouse0') && !usingItem) this.d.useItem(slot);
     } else {
       const pressed = input.consumePress('Mouse0');
-      const wants = w.kind === 'melee' ? pressed || input.isMouseDown(0) : pressed;
+      const holdToFire = w.kind === 'melee' || w.automatic === true;
+      const wants = holdToFire ? pressed || input.isMouseDown(0) : pressed;
       if (wants && !usingItem) this.tryAttack(w, held, inv);
     }
     if (input.consumePress('KeyR')) this.tryReload(w, held, inv);

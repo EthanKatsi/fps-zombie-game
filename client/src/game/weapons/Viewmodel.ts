@@ -60,6 +60,16 @@ const buildModel = (defId: string | null): Model => {
       hand(0, -0.03, -0.2);
       hand(0, -0.04, 0.12);
       return { root: g, muzzle: new THREE.Vector3(0, 0.03, -0.63), kind: 'gun', sightHeight: 0.085 };
+    case 'assault_rifle':
+      g.add(box(0.045, 0.07, 0.3, M.gunmetal, 0, 0.02, 0.0)); // receiver
+      g.add(box(0.05, 0.06, 0.26, M.rubber, 0, 0.02, -0.27)); // handguard
+      g.add(cyl(0.011, 0.011, 0.18, M.gunmetal, 0, 0.025, -0.48)); // barrel
+      g.add(box(0.035, 0.13, 0.06, M.gunmetal, 0, -0.07, -0.06)); // magazine
+      g.add(box(0.04, 0.08, 0.22, M.rubber, 0, -0.005, 0.25)); // stock
+      g.add(box(0.03, 0.035, 0.06, M.rubber, 0, 0.075, -0.02)); // red-dot housing
+      hand(0, -0.04, -0.25);
+      hand(0, -0.05, 0.1);
+      return { root: g, muzzle: new THREE.Vector3(0, 0.025, -0.58), kind: 'gun', sightHeight: 0.085 };
     case 'crossbow':
       g.add(box(0.05, 0.05, 0.6, M.wood, 0, 0, -0.05));
       g.add(box(0.55, 0.025, 0.04, M.gunmetal, 0, 0.02, -0.32));

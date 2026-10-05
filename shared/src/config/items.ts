@@ -19,6 +19,8 @@ const defs: ItemDef[] = [
   { id: 'pistol', name: 'Pistol', category: 'ranged', weight: 1.0, maxStack: 1, weaponId: 'pistol', maxDurability: 200 },
   { id: 'shotgun', name: 'Pump Shotgun', category: 'ranged', weight: 3.5, maxStack: 1, weaponId: 'shotgun', maxDurability: 150 },
   { id: 'rifle', name: 'Hunting Rifle', category: 'ranged', weight: 4.0, maxStack: 1, weaponId: 'rifle', maxDurability: 180 },
+  { id: 'assault_rifle', name: 'Assault Rifle', category: 'ranged', weight: 3.6, maxStack: 1, weaponId: 'assault_rifle', maxDurability: 300,
+    description: 'Full-auto. Loud enough to wake the whole block.' },
   { id: 'crossbow', name: 'Crossbow', category: 'ranged', weight: 3.0, maxStack: 1, weaponId: 'crossbow', maxDurability: 150,
     description: 'Silent. Bolts can be recovered.' },
 

@@ -209,6 +209,13 @@ Other commits: menu retitle to "The Walking Dead" (`8937010`).
   - Zombies don't open doors.
   - No groan audio yet (M11).
 
+## Extra: assault rifle (requested after M7)
+
+- An `assault_rifle` item plus weapon. It's the first **full-auto** weapon (`WeaponDef.automatic`: hold to fire):
+  10 rounds/s, 22 damage, 30-round magazine, 5.56 ammo, 2.6 s reload, low recoil per shot.
+- Rare loot: police lockers, police crates and gun shop lockers.
+- The server fire-rate check already throttles modified clients (tested).
+
 ## Milestone 7: PvP ✅
 
 - **Config**: `shared/src/config/pvp.ts`. PvP on/off, spawn protection (10 s, ends when you attack), max rewind
@@ -237,6 +244,9 @@ Other commits: menu retitle to "The Walking Dead" (`8937010`).
 `server/src/admin.ts` is a local-only HTTP admin API. Requests must come from this machine and carry the token
 the server writes to `server/data/admin-token.txt` on every start (the file is gitignored).
 - `GET /admin/players`: who's online, with position and health.
+- `POST /admin/give` with `{"username":"kats","item":"assault_rifle","qty":1}`: guns arrive fully loaded and in full
+  condition, and stacks are split as needed. The player's weight limit is ignored. Offline players get the items in
+  their saved inventory.
 - `POST /admin/teleport` with `{"username":"kats","to":"police"}` (any building type) or `{"username":..., "x":..,"y":..,"z":..}`.
   Offline players are moved in the DB instead.
 - Example (bash, one line): `curl -s -X POST -H "x-admin-token: $(cat server/data/admin-token.txt)" -d '{"username":"kats","to":"police"}' http://localhost:2567/admin/teleport`

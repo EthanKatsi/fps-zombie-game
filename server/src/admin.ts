@@ -2,7 +2,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type http from 'node:http';
-import { ZOMBIE_TYPE_ORDER, doorPose, type BuildingType, type Vec3, type ZombieType } from '@grey/shared';
+import {
+  ZOMBIE_TYPE_ORDER,
+  doorPose,
+  getItemDef,
+  getWeaponDef,
+  insertStack,
+  normalizeInventory,
+  type BuildingType,
+  type ItemStack,
+  type Vec3,
+  type ZombieType,
+} from '@grey/shared';
+import { makeUid } from './game/ContainerSystem';
 import type { GameServer } from './game/GameServer';
 import type { PlayerRepository } from './db/PlayerRepository';
 
@@ -18,6 +30,7 @@ import type { PlayerRepository } from './db/PlayerRepository';
  * Offline players are moved in the database and appear there on their next join.
  *
  *   POST /admin/zombies  {"username":"kats","count":5,"type":"runner"}  spawns zombies 8-16 m away
+ *   POST /admin/give     {"username":"kats","item":"assault_rifle","qty":1}  (online players; ignores weight)
  */
 export const createAdmin = (dataDir: string, game: GameServer, repo: PlayerRepository) => {
   const token = randomBytes(16).toString('hex');
@@ -115,6 +128,36 @@ export const createAdmin = (dataDir: string, game: GameServer, repo: PlayerRepos
         if (zs.spawn(t, { x: p.state.pos.x + Math.sin(a) * d, y: p.state.pos.y, z: p.state.pos.z + Math.cos(a) * d })) spawned++;
       }
       return json(res, 200, { ok: true, spawned }), true;
+    }
+
+    if (url === '/admin/give' && req.method === 'POST') {
+      const body = await readBody(req);
+      const p = body && [...game.players.values()].find((x) => x.username.toLowerCase() === String(body.username).toLowerCase());
+      // Offline players get it in their saved inventory (applied on next join).
+      const rec = p ? null : body && typeof body.username === 'string' ? await repo.findByUsername(body.username) : null;
+      if (!p && !rec) return json(res, 404, { error: 'no such player' }), true;
+      const def = getItemDef(String(body.item));
+      if (!def) return json(res, 400, { error: 'unknown item' }), true;
+      const qty = Math.max(1, Math.min(999, Math.floor(Number(body.qty) || 1)));
+      const stack: ItemStack = { uid: makeUid(), defId: def.id, qty };
+      if (def.maxDurability) stack.durability = def.maxDurability;
+      const mag = getWeaponDef(def.weaponId)?.magazineSize;
+      if (mag) stack.loadedAmmo = mag;
+      const inv = p ? p.inventory : normalizeInventory(rec!.inventory);
+      // Guns are given one by one (each needs its own uid / magazine).
+      let given = 0;
+      if (def.maxStack === 1) {
+        for (let i = 0; i < qty; i++) given += insertStack(inv.slots, { ...stack, uid: makeUid() }, 1, makeUid);
+      } else {
+        given = insertStack(inv.slots, stack, qty, makeUid);
+      }
+      if (p) game.items.sendInventory(p);
+      else {
+        rec!.inventory = inv;
+        await repo.save(rec!);
+      }
+      console.log(`[admin] gave ${given}x ${def.id} to ${p?.username ?? rec!.username}${p ? '' : ' (offline)'}`);
+      return json(res, 200, { ok: true, given, requested: qty, online: !!p }), true;
     }
 
     json(res, 404, { error: 'unknown admin route' });

@@ -23,6 +23,8 @@ export interface WeaponDef {
   /** Damage to structures (raiding, milestone 10). */
   structureDamage?: number;
   // Ranged
+  /** Keeps firing while the trigger is held (otherwise one shot per click). */
+  automatic?: boolean;
   ammoType?: AmmoType;
   magazineSize?: number;
   reloadMs?: number;

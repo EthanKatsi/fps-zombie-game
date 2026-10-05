@@ -232,3 +232,27 @@ test('enough damage knocks a dummy down and it gets back up', async () => {
   assert.ok(await down, 'dummy 0 went down');
   assert.ok(game.dummies.downIds().includes(0));
 });
+
+test('assault rifles fire full-auto at their rate, and faster spam is throttled', async () => {
+  const { c, p } = await connect('gunner');
+  p.teleport({ x: 9, y: 0, z: -2 });
+  await settle(c);
+  const gun = equip(p, 'assault_rifle', 30);
+  const rate = WEAPONS.assault_rifle.fireRate; // shots per second
+  // Hold the trigger for ~1 s at the real fire rate: every shot should be accepted.
+  for (let i = 0; i < rate; i++) {
+    attack(c, p, [0, 1, 0]);
+    await sleep(1000 / rate + 5);
+  }
+  await sleep(200);
+  assert.equal(gun.loadedAmmo, 30 - rate, `fired ${30 - (gun.loadedAmmo ?? 0)}`);
+  // A modified client firing 4x too fast only gets about the real rate through.
+  const before = gun.loadedAmmo!;
+  for (let i = 0; i < 20; i++) {
+    attack(c, p, [0, 1, 0]);
+    await sleep(1000 / rate / 4);
+  }
+  await sleep(200);
+  const fired = before - gun.loadedAmmo!;
+  assert.ok(fired <= 8, `throttled to ${fired} shots in ~0.5 s`);
+});

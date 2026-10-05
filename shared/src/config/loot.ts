@@ -95,7 +95,7 @@ export const LOOT_TABLES: Record<string, LootTable> = {
 
   gunshop_locker: {
     rolls: [1, 2], empty: 0.35,
-    entries: [{ item: 'pistol', w: 4 }, { item: 'shotgun', w: 2 }, { item: 'rifle', w: 1.2 }, { item: 'crossbow', w: 1 }],
+    entries: [{ item: 'pistol', w: 4 }, { item: 'shotgun', w: 2 }, { item: 'rifle', w: 1.2 }, { item: 'crossbow', w: 1 }, { item: 'assault_rifle', w: 0.7 }],
   },
   gunshop_cabinet: {
     rolls: [1, 3], empty: 0.25,
@@ -119,6 +119,7 @@ export const LOOT_TABLES: Record<string, LootTable> = {
     entries: [
       { item: 'pistol', w: 3 },
       { item: 'shotgun', w: 1.5 },
+      { item: 'assault_rifle', w: 0.6 },
       { item: 'ammo_9mm', w: 4, qty: [6, 20] },
       { item: 'ammo_12g', w: 3, qty: [4, 8] },
       { item: 'bat', w: 1 },
@@ -128,7 +129,10 @@ export const LOOT_TABLES: Record<string, LootTable> = {
   },
   police_desk: { rolls: [1, 2], empty: 0.4, entries: [{ item: 'ammo_9mm', w: 3, qty: [3, 12] }, { item: 'energy_bar', w: 2 }, { item: 'flashlight', w: 1 }] },
   police_cabinet: { rolls: [1, 2], empty: 0.4, entries: [{ item: 'bandage', w: 3 }, { item: 'painkillers', w: 2 }, { item: 'ammo_9mm', w: 2, qty: [3, 10] }] },
-  police_crate: { rolls: [1, 3], empty: 0.3, entries: [{ item: 'ammo_556', w: 2, qty: [5, 15] }, { item: 'ammo_12g', w: 2, qty: [4, 10] }, { item: 'rifle', w: 0.5 }] },
+  police_crate: {
+    rolls: [1, 3], empty: 0.3,
+    entries: [{ item: 'ammo_556', w: 3, qty: [10, 30] }, { item: 'ammo_12g', w: 2, qty: [4, 10] }, { item: 'rifle', w: 0.5 }, { item: 'assault_rifle', w: 0.5 }],
+  },
 
   // ---------------------------------------------------------------- streets
   street_car_trunk: {
