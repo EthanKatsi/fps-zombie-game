@@ -10,6 +10,7 @@ export * from './types/group';
 export * from './config/movement';
 export * from './config/survival';
 export * from './config/network';
+export * from './config/world';
 
 export * from './math/math';
 export * from './sim/collision';
@@ -17,4 +18,7 @@ export * from './sim/movement';
 export * from './world/mapData';
 export * from './world/builders';
 export * from './world/testMap';
+export * from './world/doors';
+export * from './world/maps';
+export * from './world/city/generateCity';
 export * from './net/protocol';

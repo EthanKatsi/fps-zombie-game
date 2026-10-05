@@ -49,6 +49,34 @@ Planned additions per milestone: `server/src/game/{loot,inventory,combat,zombies
 Static definitions (`*Def`) live in config files so balance can be tweaked without touching logic;
 only instances are stored in the database.
 
+## World generation (milestone 2)
+
+`shared/src/world/city/generateCity.ts` builds **Calder Point** from a seed: a square grid of blocks inside a
+quarantine wall with a ring road. Blocks are residential (houses with fenced yards), commercial (grocery,
+pharmacy, hardware, gun shop, apartments), parks, parking lots, plus one police station block. Required shops
+are always placed (`CITY.requiredBuildings`).
+
+`buildings.ts` assembles each building in a local frame (front wall at z=0) and rotates it in quarter turns,
+so every piece stays an axis-aligned box. Buildings are made of modular parts: wall segments around
+door/window openings, floor slabs with stairwell holes, switchback stairs (visual steps plus one invisible
+ramp collider), interior cross walls with doors, and furniture chosen per room purpose. Lootable furniture
+is recorded as `ContainerSpawn`s with a `<buildingType>_<kind>` loot table id, used in milestone 3.
+
+Only `{mapId, seed}` goes over the wire. Client and server regenerate the same `MapData`, and the server also
+sends `hashMap()` so a diverging client is detected right away.
+
+**Doors** (`world/doors.ts`) are server-authoritative. A client sends `interact {kind:'door', id}`. The server
+checks range, cooldown, and that the swing isn't blocked by a player, then broadcasts `doorChanged`. Both
+sides move the door collider in their physics world, so prediction stays in sync.
+
+**Rendering performance** (`client/src/game/MapRenderer.ts`):
+- Boxes are bucketed into 64 m chunks. Each chunk becomes ~3 `InstancedMesh`es (main, detail, glass) that
+  share one material and use per-instance colors. That gives chunk-level frustum culling and very few draw calls.
+- Detail LOD: interiors, furniture and small props are hidden beyond `RENDER.detailDistance`.
+- Fog and the camera far plane limit draw distance. The shadow frustum follows the player and snaps to
+  texels to avoid shimmer.
+- All doors share one instanced mesh, and swings are animated by rewriting instance matrices.
+
 ## Networking model
 
 - **Transport**: Socket.IO over WebSocket only. JSON for now; a binary codec can replace it behind `protocol.ts`.

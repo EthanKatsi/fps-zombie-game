@@ -69,5 +69,5 @@ export const generateTestMap = (seed = 1337): MapData => {
     { x: -5, y: 0.1, z: -5 },
   ];
 
-  return { id: 'testmap', seed, halfSize: half, boxes, spawnPoints };
+  return { id: 'testmap', seed, halfSize: half, boxes, doors: [], buildings: [], containers: [], spawnPoints };
 };

@@ -42,7 +42,8 @@ export const addStairs = (boxes: MapBox[], o: StairsOpts): void => {
       s: [o.width, h, stepD],
       r: [0, yaw, 0],
       m: o.m,
-      col: false,
+      // The top step stays solid so the ramp hands over seamlessly to the landing.
+      col: i === o.steps - 1 ? undefined : false,
     });
   }
 

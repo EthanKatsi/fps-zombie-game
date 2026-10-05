@@ -14,6 +14,8 @@ const joinBtn = $<HTMLButtonElement>('join-btn');
 const menuError = $('menu-error');
 const staminaFill = $('stamina-fill');
 const debug = $('debug');
+const prompt = $('prompt');
+const promptText = $('prompt-text');
 
 const rapierReady = RAPIER.init();
 usernameInput.value = localStorage.getItem('grey.username') ?? '';
@@ -46,8 +48,14 @@ form.addEventListener('submit', async (e) => {
       setPaused: (p) => pause.classList.toggle('hidden', !p),
       setStamina: (f) => (staminaFill.style.width = `${Math.round(f * 100)}%`),
       setDebug: (t) => (debug.textContent = t),
+      setPrompt: (t) => {
+        prompt.classList.toggle('hidden', t === null);
+        if (t !== null && promptText.textContent !== t) promptText.textContent = t;
+      },
     });
     conn.socket.on('disconnect', () => showMenu('Disconnected from server.'));
+    // Dev-only handle for debugging from the browser console / automation.
+    if (import.meta.env.DEV) (window as unknown as { __game: Game }).__game = game;
   } catch (err) {
     conn.close();
     showMenu((err as Error).message);

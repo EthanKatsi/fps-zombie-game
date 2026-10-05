@@ -3,7 +3,8 @@
 Browser-based multiplayer open-world zombie survival FPS set in the abandoned city of Calder Point.
 TypeScript · Three.js · Rapier · Node · Socket.IO · SQLite.
 
-> Work in progress. Milestone 1 is done (multiplayer first-person movement on a test map). A full README
+> Work in progress. Milestones 1-2 are done (multiplayer first-person movement in a procedurally generated
+> city with enterable buildings, doors and stairs). A full README
 > lands in milestone 11. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
 
 ## Run (development)
@@ -25,6 +26,7 @@ Open a second browser window with a different name to see multiplayer.
 | Shift | Sprint (uses stamina) |
 | C | Crouch |
 | Space | Jump |
+| E | Use (open/close doors) |
 | Esc | Release mouse / pause |
 
 ## Other commands
@@ -39,6 +41,8 @@ npm start          # server only; also serves client/dist at http://localhost:25
 ## Tweaking balance
 
 Game-balance values live in `shared/src/config/` (restart the server after editing).
-Server settings (port, DB path, map seed, offline raid protection) live in `server/src/config.ts` and can be
-overridden with environment variables (`PORT`, `DB_PATH`, `MAP_SEED`, `OFFLINE_RAID_PROTECTION`, ...).
+City layout values (blocks, street widths, building mix, car density) are in `shared/src/config/world.ts`.
+Server settings (port, DB path, map id/seed, offline raid protection) live in `server/src/config.ts` and can be
+overridden with environment variables (`PORT`, `DB_PATH`, `MAP_ID`, `MAP_SEED`, `OFFLINE_RAID_PROTECTION`, ...).
+Use `MAP_ID=testmap` for the small milestone-1 test lot.
 The SQLite database is `server/data/game.db`; delete it to wipe all players.

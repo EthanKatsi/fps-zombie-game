@@ -22,7 +22,7 @@ import type { Input } from './Input';
 export class LocalPlayer {
   state: MoveState;
   private prev: MoveState;
-  private readonly motor: CharacterMotor;
+  readonly motor: CharacterMotor;
   private pending: MoveInput[] = [];
   private seq = 0;
   private readonly errorOffset = new THREE.Vector3();

@@ -6,6 +6,8 @@ const MAX_EVENT_DELTA = 350;
 /** Keyboard + pointer-lock mouse input. Yaw/pitch update immediately for responsive aiming. */
 export class Input {
   private keys = new Set<string>();
+  /** Keys pressed since last consumed (edge-triggered actions like E). */
+  private pressed = new Set<string>();
   yaw = 0;
   pitch = 0;
   /** Radians per pixel of mouse movement. */
@@ -18,6 +20,7 @@ export class Input {
     window.addEventListener('keydown', (e) => {
       if (!this.locked) return;
       this.keys.add(e.code);
+      if (!e.repeat) this.pressed.add(e.code);
       // Stop browser shortcuts (space scrolling, etc.) while playing.
       if (['Space', 'Tab'].includes(e.code)) e.preventDefault();
     });
@@ -43,7 +46,10 @@ export class Input {
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === this.element;
       this.skipNextMove = this.locked;
-      if (!this.locked) this.keys.clear();
+      if (!this.locked) {
+        this.keys.clear();
+        this.pressed.clear();
+      }
       this.onLockChange(this.locked);
     });
   }
@@ -61,6 +67,11 @@ export class Input {
     } catch {
       plain();
     }
+  }
+
+  /** True once per physical key press. */
+  consumePress(code: string): boolean {
+    return this.pressed.delete(code);
   }
 
   private down(code: string): boolean {

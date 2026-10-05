@@ -24,7 +24,7 @@ const db = openDatabase(':memory:');
 const repo = new SqlitePlayerRepository(db);
 const httpServer = http.createServer();
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer);
-const game = new GameServer(RAPIER, io, repo, new GuestAuthProvider());
+const game = new GameServer(RAPIER, io, repo, new GuestAuthProvider(), { mapId: 'testmap' });
 game.start();
 await new Promise<void>((r) => httpServer.listen(0, r));
 const url = `http://localhost:${(httpServer.address() as AddressInfo).port}`;

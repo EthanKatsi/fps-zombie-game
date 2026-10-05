@@ -20,6 +20,8 @@ export class ServerPlayer {
   lastSeq = -1;
   /** Input budget: +1 per tick, capped. Prevents speedhacks via input flooding. */
   private credit = 0;
+  /** Rate limit for E-presses (ms, performance.now clock). */
+  nextInteractAt = 0;
 
   constructor(
     R: Rapier,
@@ -63,8 +65,8 @@ export class ServerPlayer {
     }
   }
 
-  teleport(pos: Vec3): void {
-    this.state = createMoveState(pos, this.state.yaw);
+  teleport(pos: Vec3, yaw = this.state.yaw): void {
+    this.state = createMoveState(pos, yaw);
     this.motor.syncCollider(this.state);
   }
 

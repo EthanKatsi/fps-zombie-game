@@ -2,7 +2,7 @@ import type { PlayerId } from '../types/common';
 import type { MoveInput, MoveState } from '../sim/movement';
 
 /** Bump when the wire format changes; server rejects mismatched clients. */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 // ---------- Client -> Server ----------
 
@@ -38,8 +38,15 @@ export interface JoinAccepted {
   /** Map identity so client builds the same collision world as the server. */
   mapId: string;
   mapSeed: number;
+  /** Fingerprint of the generated map; the client checks its own generation matches. */
+  mapHash: string;
+  /** Ids of doors that are currently open. */
+  openDoors: number[];
   players: PlayerInfo[];
 }
+
+/** Things a player can use by looking at them and pressing E. */
+export type InteractRequest = { kind: 'door'; id: number };
 
 export interface PlayerInfo {
   id: PlayerId;
@@ -62,6 +69,7 @@ export interface ServerToClientEvents {
   playerJoined: (msg: PlayerInfo) => void;
   playerLeft: (msg: { id: PlayerId }) => void;
   clockPong: (clientTime: number, serverTime: number) => void;
+  doorChanged: (msg: { id: number; open: boolean }) => void;
 }
 
 export interface ClientToServerEvents {
@@ -69,4 +77,5 @@ export interface ClientToServerEvents {
   /** Inputs are batched; normally one per tick. */
   input: (inputs: MoveInput[]) => void;
   clockPing: (clientTime: number) => void;
+  interact: (req: InteractRequest) => void;
 }

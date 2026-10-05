@@ -1,11 +1,20 @@
 import type { World } from '@dimforge/rapier3d-compat';
 import {
+  DOOR_USE_RANGE,
+  DoorColliders,
+  MOVEMENT,
   NETWORK,
+  PLAYER_GROUPS,
   PROTOCOL_VERSION,
   PlayerFlags,
   TICK_DT,
   buildMapColliders,
-  generateTestMap,
+  doorPose,
+  doorSweepBlocked,
+  eyeHeight,
+  hashMap,
+  loadMap,
+  type InteractRequest,
   type JoinRequest,
   type MapData,
   type NetPlayer,
@@ -20,9 +29,17 @@ import type { GameIO, GameSocket } from './types';
 
 const r2 = (n: number): number => Math.round(n * 100) / 100;
 
+/** Yaw that looks from p towards the map center (forward = (-sin yaw, -cos yaw)). */
+const yawTowardCenter = (p: Vec3): number => Math.atan2(p.x, p.z);
+
 export class GameServer {
   readonly world: World;
   readonly map: MapData;
+  readonly mapHash: string;
+  readonly doors: DoorColliders;
+  private doorsDirty = false;
+  /** Door id -> time (ms) until which it can't be toggled again (swing animation). */
+  private readonly doorBusyUntil = new Map<number, number>();
   readonly players = new Map<string, ServerPlayer>();
   private readonly joining = new Set<string>();
   private tick = 0;
@@ -36,11 +53,16 @@ export class GameServer {
     private readonly io: GameIO,
     private readonly repo: PlayerRepository,
     private readonly auth: AuthProvider,
+    opts: { mapId?: string; mapSeed?: number } = {},
   ) {
     this.world = new R.World({ x: 0, y: 0, z: 0 });
-    this.map = generateTestMap(SERVER_CONFIG.mapSeed);
+    const t0 = performance.now();
+    this.map = loadMap(opts.mapId ?? SERVER_CONFIG.mapId, opts.mapSeed ?? SERVER_CONFIG.mapSeed);
+    this.mapHash = hashMap(this.map);
     buildMapColliders(R, this.world, this.map);
+    this.doors = new DoorColliders(R, this.world, this.map.doors);
     this.world.step(); // populate the broad-phase so scene queries see the map
+    console.log(`[game] world built in ${Math.round(performance.now() - t0)} ms`);
     io.on('connection', (s) => this.onConnection(s));
   }
 
@@ -104,6 +126,9 @@ export class GameServer {
     });
 
     socket.on('input', (inputs) => player?.enqueueInputs(inputs));
+    socket.on('interact', (req) => {
+      if (player) this.handleInteract(player, req);
+    });
 
     socket.on('disconnect', () => {
       if (!player) return;
@@ -134,12 +159,15 @@ export class GameServer {
 
     this.joining.add(key);
     try {
-      const record =
-        (await this.repo.findByUsername(auth.username)) ??
-        (await this.repo.create(auth.username, this.randomSpawn()));
+      const existing = await this.repo.findByUsername(auth.username);
+      const record = existing ?? (await this.repo.create(auth.username, this.randomSpawn()));
       if (!socket.connected) return null;
 
-      const spawn = this.isValidPosition(record.position) ? record.position : this.randomSpawn();
+      let spawn = record.position;
+      if (!existing || !this.isValidPosition(spawn)) {
+        spawn = existing ? this.randomSpawn() : record.position;
+        record.yaw = yawTowardCenter(spawn);
+      }
       const player = new ServerPlayer(this.R, this.world, socket, record, spawn);
       this.players.set(player.id, player);
 
@@ -151,6 +179,8 @@ export class GameServer {
         state: player.state,
         mapId: this.map.id,
         mapSeed: this.map.seed,
+        mapHash: this.mapHash,
+        openDoors: this.doors.openIds(),
         players: [...this.players.values()].map((p) => ({ id: p.id, username: p.username })),
       });
       socket.broadcast.emit('playerJoined', { id: player.id, username: player.username });
@@ -161,9 +191,51 @@ export class GameServer {
     }
   }
 
+  /** In bounds and not inside geometry (saved positions may predate a map change). */
   private isValidPosition(p: Vec3): boolean {
     const h = this.map.halfSize - 1;
-    return Number.isFinite(p.x + p.y + p.z) && Math.abs(p.x) < h && Math.abs(p.z) < h && p.y > -1 && p.y < 100;
+    if (!(Number.isFinite(p.x + p.y + p.z) && Math.abs(p.x) < h && Math.abs(p.z) < h && p.y > -1 && p.y < 100)) {
+      return false;
+    }
+    const shape = new this.R.Capsule(MOVEMENT.standHeight / 2 - MOVEMENT.radius, MOVEMENT.radius);
+    const hit = this.world.intersectionWithShape(
+      { x: p.x, y: p.y + MOVEMENT.standHeight / 2 + 0.05, z: p.z },
+      { x: 0, y: 0, z: 0, w: 1 },
+      shape,
+      undefined,
+      PLAYER_GROUPS,
+    );
+    return hit === null;
+  }
+
+  // ---------------------------------------------------------------- interaction
+
+  private handleInteract(p: ServerPlayer, req: InteractRequest): void {
+    const now = performance.now();
+    if (now < p.nextInteractAt) return;
+    p.nextInteractAt = now + 200;
+    if (req?.kind === 'door' && Number.isInteger(req.id)) this.toggleDoor(p, req.id, now);
+  }
+
+  private toggleDoor(p: ServerPlayer, id: number, now: number): void {
+    const def = this.map.doors[id];
+    if (!def || now < (this.doorBusyUntil.get(id) ?? 0)) return;
+    // Range check from the player's eye to the door panel's current center.
+    const open = this.doors.open[id];
+    const pose = doorPose(def, open ? 1 : 0);
+    const eyeY = p.state.pos.y + eyeHeight(p.state.crouching);
+    const dist = Math.hypot(pose.x - p.state.pos.x, pose.y - eyeY, pose.z - p.state.pos.z);
+    if (dist > DOOR_USE_RANGE + 0.5) return;
+    // Don't swing a door through anyone standing in its path.
+    for (const other of this.players.values()) {
+      const o = other.state.pos;
+      if (Math.abs(o.y - def.hinge[1]) > def.height) continue;
+      if (doorSweepBlocked(def, o.x, o.z, MOVEMENT.radius)) return;
+    }
+    this.doors.set(id, !open);
+    this.doorsDirty = true;
+    this.doorBusyUntil.set(id, now + 450);
+    this.io.emit('doorChanged', { id, open: !open });
   }
 
   private randomSpawn(): Vec3 {
@@ -175,9 +247,17 @@ export class GameServer {
 
   private step(): void {
     this.tick++;
+    if (this.doorsDirty) {
+      this.world.step(); // refresh the broad-phase so moved door colliders are seen
+      this.doorsDirty = false;
+    }
     for (const p of this.players.values()) {
       p.simulate(TICK_DT);
-      if (p.state.pos.y < -30) p.teleport(this.randomSpawn()); // fell out of the world
+      if (p.state.pos.y < -30) {
+        // Fell out of the world.
+        const spawn = this.randomSpawn();
+        p.teleport(spawn, yawTowardCenter(spawn));
+      }
     }
 
     this.snapshotAcc += NETWORK.snapshotRate / NETWORK.tickRate;
