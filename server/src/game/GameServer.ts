@@ -30,6 +30,9 @@ import { SurvivalSystem, giveStartingKit, netStats } from './SurvivalSystem';
 import { WeaponSystem } from './WeaponSystem';
 import { DummySystem } from './DummySystem';
 import { NoiseSystem } from './NoiseSystem';
+import { ZombieSystem } from './ZombieSystem';
+import { Navigation, buildNavMesh } from './Navigation';
+import { WorldClock } from './WorldClock';
 import type { GameIO, GameSocket } from './types';
 
 const r2 = (n: number): number => Math.round(n * 100) / 100;
@@ -47,6 +50,9 @@ export class GameServer {
   readonly weapons: WeaponSystem;
   readonly dummies: DummySystem;
   readonly noise = new NoiseSystem();
+  readonly clock = new WorldClock();
+  /** Created by enableZombies() once the navmesh is ready. */
+  zombies: ZombieSystem | null = null;
   private doorsDirty = false;
   /** Door id -> time (ms) until which it can't be toggled again (swing animation). */
   private readonly doorBusyUntil = new Map<number, number>();
@@ -75,9 +81,20 @@ export class GameServer {
     this.items = new InventorySystem(R, this.world, this.map, () => this.players.values());
     this.survival = new SurvivalSystem(this.items, () => this.spawnPoint());
     this.dummies = new DummySystem(this.map.dummies, io);
-    this.weapons = new WeaponSystem(R, this.world, () => this.players.values(), this.survival, this.items, this.dummies, this.noise);
+    this.weapons = new WeaponSystem(R, this.world, () => this.players.values(), this.survival, this.items, this.dummies, this.noise, () => this.zombies);
     console.log(`[game] world built in ${Math.round(performance.now() - t0)} ms`);
     io.on('connection', (s) => this.onConnection(s));
+  }
+
+  /** Build (or load) the navmesh and start simulating zombies. */
+  async enableZombies(cacheDir: string | null, autoSpawn = true): Promise<ZombieSystem> {
+    const navMesh = await buildNavMesh(this.map, cacheDir);
+    const nav = new Navigation(navMesh, 256);
+    const zs = new ZombieSystem(this.R, this.world, nav, this.map, this.doors, () => this.players.values(), this.survival, this.noise, this.items);
+    zs.autoSpawn = autoSpawn;
+    zs.isNight = () => this.clock.isNight();
+    this.zombies = zs;
+    return zs;
   }
 
   serverTime(): number {
@@ -314,6 +331,7 @@ export class GameServer {
     this.survival.update(this.players.values(), TICK_DT, now);
     this.weapons.update(this.players.values(), now, TICK_DT);
     this.dummies.update(now);
+    this.zombies?.update(now, TICK_DT);
     this.noise.prune(now);
     if (this.tick % 10 === 0) this.items.update([...this.players.values()], now);
     if (this.tick % 15 === 0) this.survival.flushStats(this.players.values());
@@ -359,6 +377,7 @@ export class GameServer {
         ack: me.lastSeq,
         you: me.state,
         players: visible,
+        zombies: this.zombies?.netFor(me.state.pos) ?? [],
       });
     }
   }

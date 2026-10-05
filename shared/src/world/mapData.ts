@@ -86,6 +86,12 @@ export interface DummySpawn {
   yaw: number;
 }
 
+/** A connection pathfinding must know about (stair flights): foot -> landing, both directions. */
+export interface NavLink {
+  a: [number, number, number];
+  b: [number, number, number];
+}
+
 export interface MapData {
   id: string;
   seed: number;
@@ -96,6 +102,8 @@ export interface MapData {
   buildings: BuildingInfo[];
   containers: ContainerSpawn[];
   dummies: DummySpawn[];
+  /** Extra navmesh connections for zombie pathfinding (one per stair flight). */
+  navLinks: NavLink[];
   spawnPoints: Vec3[];
 }
 

@@ -5,7 +5,7 @@ import type { SurvivalStats } from '../types/player';
 import type { MoveInput, MoveState } from '../sim/movement';
 
 /** Bump when the wire format changes; server rejects mismatched clients. */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 // ---------- Client -> Server ----------
 
@@ -126,6 +126,17 @@ export interface PlayerInfo {
   username: string;
 }
 
+/** Compact zombie for clients (interest-managed). */
+export interface NetZombie {
+  id: number;
+  /** Index into ZOMBIE_TYPE_ORDER. */
+  t: number;
+  p: [number, number, number];
+  yaw: number;
+  /** ZombieAnim value. */
+  s: number;
+}
+
 export interface Snapshot {
   tick: number;
   serverTime: number;
@@ -133,6 +144,7 @@ export interface Snapshot {
   ack: number;
   you: MoveState;
   players: NetPlayer[];
+  zombies: NetZombie[];
 }
 
 export interface ServerToClientEvents {

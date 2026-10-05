@@ -16,6 +16,7 @@ export * from './config/inventory';
 export * from './config/loot';
 export * from './config/crafting';
 export * from './config/weapons';
+export * from './config/zombies';
 export * from './combat/combat';
 export * from './inventory/inventory';
 export * from './inventory/loot';

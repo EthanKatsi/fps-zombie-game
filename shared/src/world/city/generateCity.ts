@@ -14,7 +14,7 @@ const CAR_COLORS = ['car_red', 'car_blue', 'car_white', 'car_rust', 'car_green',
  */
 export const generateCity = (seed: number): MapData => {
   const rand = mulberry32(seed);
-  const ctx: GenContext = { boxes: [], doors: [], containers: [], buildings: [], dummies: [], rand };
+  const ctx: GenContext = { boxes: [], doors: [], containers: [], buildings: [], dummies: [], navLinks: [], rand };
   const { boxes } = ctx;
   const N = CITY.blocksPerSide;
   const B = CITY.blockSize;
@@ -160,6 +160,7 @@ export const generateCity = (seed: number): MapData => {
     buildings: ctx.buildings,
     containers: ctx.containers,
     dummies: ctx.dummies,
+    navLinks: ctx.navLinks,
     spawnPoints,
   };
 };

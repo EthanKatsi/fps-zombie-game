@@ -1,7 +1,7 @@
 import { CITY } from '../../config/world';
 import type { ContainerKind } from '../../types/inventory';
 import { addStairs, type Dir } from '../builders';
-import type { BuildingInfo, BuildingType, ContainerSpawn, DoorDef, DummySpawn, MapBox } from '../mapData';
+import type { BuildingInfo, BuildingType, ContainerSpawn, DoorDef, DummySpawn, MapBox, NavLink } from '../mapData';
 
 export interface GenContext {
   boxes: MapBox[];
@@ -9,6 +9,7 @@ export interface GenContext {
   containers: ContainerSpawn[];
   buildings: BuildingInfo[];
   dummies: DummySpawn[];
+  navLinks: NavLink[];
   rand: () => number;
 }
 
@@ -400,6 +401,11 @@ export const buildBuilding = (
       const before = boxes.length;
       addStairs(boxes, { x: wx, y, z: wz, dir: fr.dir('+z'), width: SW, height: FH, steps: 16, m: 'stairs' });
       for (let i = before; i < boxes.length; i++) boxes[i].d = true;
+      // Tell zombie pathfinding this flight connects the two floors (foot -> landing).
+      const sxc = (sx0 + sx1) / 2;
+      const [fx, fz] = fr.pt(sxc, stairZ0 - 0.45);
+      const [lx, lz] = fr.pt(sxc, zoneEnd + 0.45);
+      ctx.navLinks.push({ a: [fx, y, fz], b: [lx, y + FH, lz] });
     }
 
     // Interior cross walls split the floor into rooms, front to back.

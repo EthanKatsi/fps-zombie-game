@@ -6,3 +6,4 @@ server/data/*.db-*
 .vite/
 .DS_Store
 server/data/admin-token.txt
+server/data/*.bin

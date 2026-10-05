@@ -62,6 +62,7 @@ const main = async () => {
   });
 
   const game = new GameServer(RAPIER, io, repo, new GuestAuthProvider());
+  await game.enableZombies(path.resolve(serverRoot, 'data'));
   game.start();
   admin = createAdmin(path.resolve(serverRoot, 'data'), game, repo);
 

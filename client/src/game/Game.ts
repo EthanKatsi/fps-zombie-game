@@ -34,6 +34,7 @@ import { SurvivalHud } from '../ui/SurvivalHud';
 import { CombatHud } from '../ui/CombatHud';
 import { Effects } from './Effects';
 import { DummiesView } from './DummiesView';
+import { ZombiesView } from './ZombiesView';
 import { Viewmodel } from './weapons/Viewmodel';
 import { WeaponController } from './weapons/WeaponController';
 
@@ -81,6 +82,7 @@ export class Game {
   private readonly viewmodel = new Viewmodel();
   private readonly weapons: WeaponController;
   private readonly dummies: DummiesView;
+  private readonly zombies: ZombiesView;
   private dead = false;
   private readonly tmpV = new THREE.Vector3();
   private readonly rayDir = new THREE.Vector3();
@@ -155,6 +157,7 @@ export class Game {
     this.groundItems = new GroundItemsView(this.scene);
     this.effects = new Effects(this.scene);
     this.dummies = new DummiesView(this.scene, this.map.dummies, join.dummiesDown);
+    this.zombies = new ZombiesView(this.scene);
     this.viewmodel.setAspect(window.innerWidth / window.innerHeight);
 
     // --- items UI (pure view; every change goes through the server) ---
@@ -199,6 +202,7 @@ export class Game {
       conn.observeServerTime(snap.serverTime + conn.rtt / 2, 0.05);
       if (!this.dead) this.local.reconcile(snap.ack, snap.you);
       this.remotes.onSnapshot(snap.players, snap.serverTime);
+      this.zombies.onSnapshot(snap.zombies, snap.serverTime);
     });
     s.on('playerJoined', (p) => {
       this.remotes.setName(p.id, p.username);
@@ -378,6 +382,7 @@ export class Game {
     }
     this.updateAim(dt);
     this.remotes.update(this.conn.serverNow(), dt);
+    this.zombies.update(this.conn.serverNow(), dt);
     this.doorRenderer.update(dt);
     this.dummies.update(dt);
     this.effects.update(dt);
@@ -475,7 +480,7 @@ export class Game {
           `${this.fps} fps · ${info.calls} draws · ${(info.triangles / 1000).toFixed(0)}k tris · ${Math.round(this.conn.rtt)} ms ping`,
           `pos ${p.x.toFixed(1)} ${p.y.toFixed(1)} ${p.z.toFixed(1)}${this.local.state.grounded ? '' : ' (air)'} · ${this.locationLabel()}`,
           `pending ${this.local.pendingCount} · last correction ${this.local.lastCorrection.toFixed(3)} m`,
-          `players ${this.online} online, ${this.remotes.count} nearby · ${this.groundItems.count} items near`,
+          `players ${this.online} online, ${this.remotes.count} nearby · ${this.zombies.count} zombies · ${this.groundItems.count} items near`,
         ]
           .filter(Boolean)
           .join('\n'),

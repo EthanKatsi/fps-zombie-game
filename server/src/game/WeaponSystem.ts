@@ -26,8 +26,9 @@ import type { InventorySystem } from './InventorySystem';
 import type { NoiseSystem } from './NoiseSystem';
 import type { ServerPlayer } from './ServerPlayer';
 import type { SurvivalSystem } from './SurvivalSystem';
+import type { ZombieSystem } from './ZombieSystem';
 
-type Target = { kind: 'player'; p: ServerPlayer } | { kind: 'dummy'; id: number };
+type Target = { kind: 'player'; p: ServerPlayer } | { kind: 'dummy'; id: number } | { kind: 'zombie'; id: number };
 
 interface RayResult {
   /** Distance along the ray to whatever was hit first (or maxT). */
@@ -71,7 +72,14 @@ export class WeaponSystem {
     private readonly items: InventorySystem,
     private readonly dummies: DummySystem,
     private readonly noise: NoiseSystem,
+    private readonly zombies: () => ZombieSystem | null,
   ) {}
+
+  /** Headshot multiplier: zombies have their own (headshots are what kills the dead). */
+  private mult(target: Target, head: boolean, w: WeaponDef): number {
+    if (!head) return 1;
+    return target.kind === 'zombie' ? (this.zombies()?.headshotMultiplier(target.id) ?? w.headshotMultiplier) : w.headshotMultiplier;
+  }
 
   // ------------------------------------------------------------------ helpers
 
@@ -99,6 +107,13 @@ export class WeaponSystem {
       const r = rayHitboxes(o, d, best.t, this.dummies.hitboxes(dm.id));
       if (r) best = { t: r.t, target: { kind: 'dummy', id: dm.id }, head: r.head, world: false };
     }
+    const zs = this.zombies();
+    if (zs) {
+      for (const z of zs.targets()) {
+        const r = rayHitboxes(o, d, best.t, z.hitboxes);
+        if (r) best = { t: r.t, target: { kind: 'zombie', id: z.id }, head: r.head, world: false };
+      }
+    }
     return best;
   }
 
@@ -112,6 +127,9 @@ export class WeaponSystem {
       if (w.bleedChance && Math.random() < w.bleedChance) victim.record.stats.bleeding = true;
       this.survival.damage(victim, damage, 'player', attacker, false, attacker.state.pos);
       kill = !victim.alive;
+    } else if (target.kind === 'zombie') {
+      kind = 'zombie';
+      kill = this.zombies()?.damage(target.id, damage, attacker, now) ?? false;
     } else {
       kind = 'dummy';
       kill = this.dummies.damage(target.id, damage, now);
@@ -198,9 +216,9 @@ export class WeaponSystem {
         const end = add(eye, d, r.t);
         ends.push([...v3(end), r.target ? 2 : r.world ? 1 : 0]);
         if (!r.target) continue;
-        const key = r.target.kind === 'player' ? `p:${r.target.p.id}` : `d:${r.target.id}`;
+        const key = r.target.kind === 'player' ? `p:${r.target.p.id}` : `${r.target.kind}:${r.target.id}`;
         const entry = dealt.get(key) ?? { target: r.target, dmg: 0, head: false };
-        entry.dmg += w.damage * (r.head ? w.headshotMultiplier : 1);
+        entry.dmg += w.damage * this.mult(r.target, r.head, w);
         entry.head ||= r.head;
         dealt.set(key, entry);
       }
@@ -264,7 +282,7 @@ export class WeaponSystem {
     }
     const ends: ShotEnd[] = [];
     if (landed && landedDir) {
-      this.hit(p, landed.target!, w.damage * (landed.head ? w.headshotMultiplier : 1), landed.head, w, now);
+      this.hit(p, landed.target!, w.damage * this.mult(landed.target!, landed.head, w), landed.head, w, now);
       if (s.uid) this.wear(p, s.uid, COMBAT.meleeWearPerHit);
       ends.push([...v3(add(eye, landedDir, landed.t)), 2]);
     } else if (worldEnd) {
@@ -307,7 +325,7 @@ export class WeaponSystem {
       let end: 0 | 1 | 2 | null = null;
       if (r.target) {
         // Bolts in flight still count even if the shooter has died meanwhile.
-        this.hit(owner, r.target, pr.weapon.damage * (r.head ? pr.weapon.headshotMultiplier : 1), r.head, pr.weapon, now);
+        this.hit(owner, r.target, pr.weapon.damage * this.mult(r.target, r.head, pr.weapon), r.head, pr.weapon, now);
         end = 2;
       } else if (r.world) {
         end = 1;

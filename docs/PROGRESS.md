@@ -12,8 +12,8 @@ Original requirements: [SPEC.md](SPEC.md). Design: [ARCHITECTURE.md](ARCHITECTUR
 | 3 | Inventory, looting containers, item pickup/drop | ✅ Done | `8e67c76` |
 | 4 | Survival stats, death, respawn | ✅ Done | `72da7a7` |
 | 5 | Weapons & FPS combat with viewmodels | ✅ Done | `de9e212` |
-| 6 | Zombies (navmesh AI, noise/vision, combat) | ⏳ Next | |
-| 7 | PvP, lag-compensated hits, death loot bags, kill feed | | |
+| 6 | Zombies (navmesh AI, noise/vision, combat) | ✅ Done | see `git log` |
+| 7 | PvP, lag-compensated hits, death loot bags, kill feed | ⏳ Next | |
 | 8 | Groups/teams and chat | | |
 | 9 | Base building, storage, respawn beds | | |
 | 10 | Raiding and structure damage | | |
@@ -164,6 +164,51 @@ Other commits: menu retitle to "The Walking Dead" (`8937010`).
 - **Not yet**: lag compensation (M7). The server currently tests against present positions, so fast-moving targets
   are a little harder to hit at high ping. Structure damage from melee comes in M10.
 
+## Milestone 6: zombies ✅
+
+- **Config** (`shared/src/config/zombies.ts`):
+  - **Walker:** slow; 80 HP.
+  - **Runner:** chases at 5.6 m/s, faster than you walk but slower than you sprint.
+  - **Bloater:** 260 HP, hits hard, slow.
+  - Each type has its own attack windup, vision range and FOV, hearing and headshot multiplier.
+  - `ZOMBIES` holds population, spawning, despawning, density, night multiplier, AI timing, bleed and drop chance.
+- **Navigation** (`server/src/game/Navigation.ts`):
+  - `recast-navigation` builds a **tiled navmesh** from every collidable map box, in about 4.7 s for the city.
+  - It's cached to `server/data/navmesh-<map>-<seed>-<hash>-v<N>.bin` (gitignored), so restarts are instant.
+  - **Stairs**: the 45° ramp colliders don't rasterize into connected navmesh reliably, so the city generator records
+    every flight as a `NavLink` (foot → landing), which becomes a Detour off-mesh connection. Tests prove zombies
+    climb to roofs.
+  - Lessons learned (see git history):
+    - Triangle winding must be CCW from outside, or box tops count as unwalkable.
+    - The tile cache's layers don't connect overlapping ramps/floors within a tile, so we use the plain tiled navmesh.
+  - **Doors** aren't in the navmesh (paths go through doorways). Instead, after each crowd step, a zombie whose move
+    would cross a closed door panel is put back, so zombies pile up at closed doors. Bashing them comes in M10.
+- **AI** (`server/src/game/ZombieSystem.ts`): one Detour `Crowd` agent per zombie.
+  - **Thinking:** every 250 ms (staggered). Each zombie tracks which noises it has already heard.
+  - **Senses:** a vision cone with line of sight (walls and closed doors block it, and crouching shortens vision), a
+    3 m proximity sense, and hearing via `NoiseSystem` (gunshots carry 120–220 m, melee barely).
+  - **States:** idle/wander → investigate (noise or last-seen spot) → chase → lunge attack, with a windup you can
+    dodge and a cooldown.
+  - **Damage:** being shot makes a zombie chase the shooter.
+  - **Death:** the agent is removed, the corpse stays for 8 s, and there's a 25% chance of a drop from the
+    `zombie_drop` loot table.
+  - **Spawning:** around each player at 35–85 m, up to `perPlayer` × density (busier blocks hold more) × night
+    multiplier.
+  - **Despawning:** zombies more than 140 m from every player for 20 s are removed. There's a global cap of 180.
+- **Combat**: zombies are `WeaponSystem` targets (`kind: 'zombie'`) with their own headshot multiplier.
+  Zombie hits go through `SurvivalSystem.damage(..., 'zombie', null, false, zombiePos)`, so you get the direction
+  arc, bleeding chance, and the death screen's "The dead got you."
+- **Network**: `Snapshot.zombies` (within 110 m) carries id, type, position, yaw and animation state. The client's
+  `ZombiesView.ts` interpolates them like players, with procedural animation (shamble, sprint with arm pumping,
+  lunge, fall over). Bloaters are fat, runners lean.
+- **Day/night hook**: `server/src/game/WorldClock.ts` (48-minute day) already drives the night spawn multiplier;
+  M11 adds the lighting.
+- **Admin**: `POST /admin/zombies {"username":"kats","count":5,"type":"runner"}` spawns zombies 8–16 m away.
+- **Known limits**:
+  - Players walk through zombies (no player–zombie collision, which keeps prediction simple).
+  - Zombies don't open doors.
+  - No groan audio yet (M11).
+
 ## Admin / testing tools
 
 `server/src/admin.ts` is a local-only HTTP admin API. Requests must come from this machine and carry the token
@@ -192,6 +237,14 @@ the server writes to `server/data/admin-token.txt` on every start (the file is g
   - headshot multiplier, and kill confirmation with the killer's name
   - crossbow projectile
   - knocking a dummy down
+- `server/test/zombies.test.ts` (test map):
+  - spawning and snapshots
+  - seeing and chasing a player
+  - hearing a gunshot 40 m away
+  - a bite after the windup
+  - headshot kills with confirmation
+  - following a player up the stairs to a roof
+- `server/test/zombie-doors.test.ts` (city): a closed door keeps a chasing zombie out; opening it lets the zombie in.
 - Gotcha: players can overlap (no player-player collision). Keep test players apart from spawn points and each other, or a bystander takes the hit.
 - Gotcha: a teleported test player counts as airborne (+4° spread) until they send a movement input. Use `settle()`.
 - Gotcha: the test map scatters wrecked cars just outside a 6 m radius of the origin. Put test players within ~2 m of the origin, or line-of-sight checks will (correctly) fail.

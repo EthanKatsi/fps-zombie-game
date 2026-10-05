@@ -104,6 +104,15 @@ sides move the door collider in their physics world, so prediction stays in sync
 - The client predicts only the presentation: tracers, recoil, the ammo count, and the swing and reload animations.
 - Viewmodels live in a separate Three.js scene rendered after the world with the depth buffer cleared.
 
+## Zombies (milestone 6)
+
+- **Server-only simulation.** A tiled Recast navmesh is built from the map boxes (with stair off-mesh links),
+  and a Detour crowd steers the agents.
+- `ZombieSystem` runs the senses and state machine, applies closed-door blocking after each crowd step, and
+  handles attacks.
+- `WeaponSystem` treats zombies as hit targets. Clients receive interest-managed `NetZombie`s in each snapshot and
+  animate them procedurally.
+
 ## Networking model
 
 - **Transport**: Socket.IO over WebSocket only. JSON for now; a binary codec can replace it behind `protocol.ts`.

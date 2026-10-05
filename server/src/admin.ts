@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type http from 'node:http';
-import { doorPose, type BuildingType, type Vec3 } from '@grey/shared';
+import { ZOMBIE_TYPE_ORDER, doorPose, type BuildingType, type Vec3, type ZombieType } from '@grey/shared';
 import type { GameServer } from './game/GameServer';
 import type { PlayerRepository } from './db/PlayerRepository';
 
@@ -16,6 +16,8 @@ import type { PlayerRepository } from './db/PlayerRepository';
  *        -d '{"username":"kats","to":"police"}'          # or "x","y","z"
  *
  * Offline players are moved in the database and appear there on their next join.
+ *
+ *   POST /admin/zombies  {"username":"kats","count":5,"type":"runner"}  spawns zombies 8-16 m away
  */
 export const createAdmin = (dataDir: string, game: GameServer, repo: PlayerRepository) => {
   const token = randomBytes(16).toString('hex');
@@ -95,6 +97,24 @@ export const createAdmin = (dataDir: string, game: GameServer, repo: PlayerRepos
       await repo.save(rec);
       console.log(`[admin] moved offline player ${rec.username} to ${JSON.stringify(target.pos)}`);
       return json(res, 200, { ok: true, online: false, note: 'applied on next join', ...target }), true;
+    }
+
+    if (url === '/admin/zombies' && req.method === 'POST') {
+      const body = await readBody(req);
+      const zs = game.zombies;
+      const p = body && [...game.players.values()].find((x) => x.username.toLowerCase() === String(body.username).toLowerCase());
+      if (!zs) return json(res, 503, { error: 'zombies not enabled' }), true;
+      if (!p) return json(res, 404, { error: 'player not online' }), true;
+      const count = Math.max(1, Math.min(30, Number(body.count) || 3));
+      const type = ZOMBIE_TYPE_ORDER.includes(body.type) ? (body.type as ZombieType) : null;
+      let spawned = 0;
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = 8 + Math.random() * 8;
+        const t = type ?? ZOMBIE_TYPE_ORDER[Math.floor(Math.random() * 3)];
+        if (zs.spawn(t, { x: p.state.pos.x + Math.sin(a) * d, y: p.state.pos.y, z: p.state.pos.z + Math.cos(a) * d })) spawned++;
+      }
+      return json(res, 200, { ok: true, spawned }), true;
     }
 
     json(res, 404, { error: 'unknown admin route' });

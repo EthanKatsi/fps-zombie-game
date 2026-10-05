@@ -144,6 +144,19 @@ export const LOOT_TABLES: Record<string, LootTable> = {
     ],
   },
 
+  // ---------------------------------------------------------------- zombies (what a corpse may drop)
+  zombie_drop: {
+    rolls: [1, 1], empty: 0,
+    entries: [
+      { item: 'cloth', w: 5, qty: [1, 2] },
+      { item: 'bandage', w: 2 },
+      { item: 'ammo_9mm', w: 2, qty: [2, 6] },
+      { item: 'energy_bar', w: 2 },
+      { item: 'water_bottle', w: 1 },
+      { item: 'scrap_metal', w: 2 },
+    ],
+  },
+
   // ---------------------------------------------------------------- fallbacks
   any_fridge: { rolls: [1, 2], empty: 0.4, entries: FOOD },
   any_crate: { rolls: [1, 3], empty: 0.4, entries: [...FOOD, { item: 'cloth', w: 3 }, { item: 'scrap_metal', w: 3 }] },
