@@ -197,13 +197,15 @@ interface Opening {
   /** Door swing: +1/-1 quarter turn (see DoorDef). */
   swing?: 1 | -1;
   open?: boolean;
+  /** Hinge on the high end of the opening instead of the low end. */
+  hingeRight?: boolean;
 }
 
 export const WALL_T = CITY.wallThickness;
 const T = WALL_T;
 const IT = 0.15;
-/** Local z where the first flight of stairs starts (front edge of the first step). */
-export const STAIR_Z0 = T + 1.0;
+/** Local z where each flight of stairs starts (front edge of the first step). Leaves a walkway along the front wall. */
+export const STAIR_Z0 = T + 1.6;
 const SLAB = 0.2;
 
 export const buildBuilding = (
@@ -233,9 +235,10 @@ export const buildBuilding = (
   /** Emit a door panel definition for an opening in a wall along local X or Z. */
   const addDoor = (axis: 'x' | 'z', o: Opening, wallCenter: number, y: number, exterior: boolean) => {
     const width = o.b - o.a - 0.02;
-    const [hx, hz] = axis === 'x' ? fr.pt(o.a + 0.01, wallCenter) : fr.pt(wallCenter, o.a + 0.01);
-    // Local panel yaw: along +x is 0; along +z is -PI/2 (direction = (cos a, -sin a)).
-    const localYaw = axis === 'x' ? 0 : -Math.PI / 2;
+    const h = o.hingeRight ? o.b - 0.01 : o.a + 0.01;
+    const [hx, hz] = axis === 'x' ? fr.pt(h, wallCenter) : fr.pt(wallCenter, h);
+    // Local panel yaw, direction = (cos a, -sin a): +x is 0, -x is PI, +z is -PI/2, -z is PI/2.
+    const localYaw = axis === 'x' ? (o.hingeRight ? Math.PI : 0) : o.hingeRight ? Math.PI / 2 : -Math.PI / 2;
     ctx.doors.push({
       id: ctx.doors.length,
       hinge: [hx, y, hz],
@@ -295,7 +298,7 @@ export const buildBuilding = (
     return out;
   };
 
-  const doorAt = (center: number, swing: 1 | -1, open?: boolean): Opening => ({
+  const doorAt = (center: number, swing: 1 | -1, open?: boolean, hingeRight?: boolean): Opening => ({
     a: center - CITY.doorWidth / 2,
     b: center + CITY.doorWidth / 2,
     y0: 0,
@@ -303,6 +306,7 @@ export const buildBuilding = (
     kind: 'door',
     swing,
     open,
+    hingeRight,
   });
 
   const placeSide = (side: 'left' | 'right', z0: number, z1: number, y: number, pool: Furn[]) => {
@@ -344,32 +348,39 @@ export const buildBuilding = (
     addContainer('cabinet', cx0 + 1.2, y + 0.5, z0 + 1.4, 2.4, 1.0, 0.8);
   };
 
+  /** A floor/roof slab whose top is at y, with a stairwell hole over the given side's stair strip. */
+  const slabWithHole = (y: number, side: 'left' | 'right', m: string, railDetail: boolean) => {
+    const [hx0, hx1] = strip(side);
+    const hz0 = stairZ0 - 0.3;
+    const hz1 = zoneEnd;
+    const y0 = y - SLAB;
+    push(fr.box(0, W, y0, y, 0, hz0, m));
+    push(fr.box(0, W, y0, y, hz1, D, m));
+    if (hx0 > 0) push(fr.box(0, hx0, y0, y, hz0, hz1, m));
+    if (hx1 < W) push(fr.box(hx1, W, y0, y, hz0, hz1, m));
+    // Railings around the open stairwell.
+    const railX = side === 'left' ? hx1 : hx0 - 0.08;
+    push(fr.box(railX, railX + 0.08, y, y + 1.0, hz0, hz1, 'metal_dark', { d: railDetail || undefined }));
+    push(fr.box(hx0, hx1, y, y + 1.0, hz0, hz0 + 0.08, 'metal_dark', { d: railDetail || undefined }));
+  };
+
   // ---- floors
   const multi = floors > 1;
+  /** Multi-floor buildings get one more flight from the top floor up through a roof hatch. */
+  const roofAccess = multi;
+  const flights = roofAccess ? floors : floors - 1;
   for (let f = 0; f < floors; f++) {
     const y = groundY + f * FH;
     const h = FH - SLAB;
 
     // Slab (with a stairwell hole above the stairs from the floor below).
-    if (f === 0) {
-      push(fr.box(0, W, 0, y, 0, D, spec.floor));
-    } else {
-      const [hx0, hx1] = strip(stairSide(f - 1));
-      const hz0 = stairZ0 - 0.3;
-      const hz1 = zoneEnd;
-      const y0 = y - SLAB;
-      push(fr.box(0, W, y0, y, 0, hz0, spec.floor));
-      push(fr.box(0, W, y0, y, hz1, D, spec.floor));
-      if (hx0 > 0) push(fr.box(0, hx0, y0, y, hz0, hz1, spec.floor));
-      if (hx1 < W) push(fr.box(hx1, W, y0, y, hz0, hz1, spec.floor));
-      // Railings around the open stairwell.
-      const railX = stairSide(f - 1) === 'left' ? hx1 : hx0 - 0.08;
-      push(fr.box(railX, railX + 0.08, y, y + 1.0, hz0, hz1, 'metal_dark', { d: true }));
-      push(fr.box(hx0, hx1, y, y + 1.0, hz0, hz0 + 0.08, 'metal_dark', { d: true }));
-    }
+    if (f === 0) push(fr.box(0, W, 0, y, 0, D, spec.floor));
+    else slabWithHole(y, stairSide(f - 1), spec.floor, true);
 
     // Exterior walls.
-    const front: Opening[] = f === 0 ? [doorAt(W / 2, -1)] : [];
+    // Front door hinges on the right and swings inwards, so when open it never blocks the
+    // walkway to the ground-floor stairs (always on the left).
+    const front: Opening[] = f === 0 ? [doorAt(W / 2, 1, undefined, true)] : [];
     const back: Opening[] = f === 0 ? [doorAt(randRange(rand, W * 0.3, W * 0.7), 1)] : [];
     front.push(...windows(0, W, front, spec.shop && f === 0));
     back.push(...windows(0, W, back, false));
@@ -380,9 +391,9 @@ export const buildBuilding = (
 
     // Stairs up to the next floor (switchback sides each floor).
     const sidesBlocked = new Set<string>();
-    if (multi && f < floors - 1) sidesBlocked.add(stairSide(f));
+    if (f < flights) sidesBlocked.add(stairSide(f));
     if (f > 0) sidesBlocked.add(stairSide(f - 1));
-    if (f < floors - 1) {
+    if (f < flights) {
       const [sx0, sx1] = strip(stairSide(f));
       const [wx, wz] = fr.pt((sx0 + sx1) / 2, stairZ0);
       const before = boxes.length;
@@ -415,16 +426,18 @@ export const buildBuilding = (
       const z1 = bounds[r + 1] - (r < bounds.length - 2 ? IT / 2 : 0);
       const pool = SIDE_POOLS[purpose] ?? SIDE_POOLS.living;
       for (const side of ['left', 'right'] as const) {
-        const start = r === 0 && sidesBlocked.has(side) ? zoneEnd + 0.3 : spec.shop && r === 0 ? z0 + 2.8 : z0;
+        // Keep a clear landing where stairs arrive / depart.
+        const start = r === 0 && sidesBlocked.has(side) ? zoneEnd + 1.4 : spec.shop && r === 0 ? z0 + 2.8 : z0;
         placeSide(side, start, z1, y, pool);
       }
       if (purpose.startsWith('shop_')) shopRows(z0, z1, y, purpose);
     }
   }
 
-  // ---- roof
+  // ---- roof (with a hatch over the last flight when the building has roof access)
   const top = groundY + floors * FH;
-  push(fr.box(0, W, top - SLAB, top, 0, D, 'roof'));
+  if (roofAccess) slabWithHole(top, stairSide(floors - 1), 'roof', false);
+  else push(fr.box(0, W, top - SLAB, top, 0, D, 'roof'));
   push(fr.box(0, W, top, top + 0.6, 0, 0.2, ext));
   push(fr.box(0, W, top, top + 0.6, D - 0.2, D, ext));
   push(fr.box(0, 0.2, top, top + 0.6, 0.2, D - 0.2, ext));

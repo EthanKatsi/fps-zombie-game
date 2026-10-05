@@ -116,6 +116,42 @@ test('stairs inside a two-story house reach the upper floor', () => {
   assert.ok(Math.abs(s.pos.y - upper) < 0.15, `on the upper floor: y=${s.pos.y.toFixed(2)} expected ${upper}`);
 });
 
+for (const kind of ['house', 'apartment', 'police'] as const) test(`you can walk from the street door of a ${kind} up to its roof`, () => {
+  const apt = city.buildings.find((b) => b.type === kind && b.floors > 1)!;
+  const fr = frameOf(apt);
+  const [W, D] = apt.size;
+  const FH = CITY.floorHeight;
+  const zoneEnd = STAIR_Z0 + FH + 0.05;
+  const stripX = (f: number) => (f % 2 === 0 ? WALL_T + CITY.stairWidth / 2 : W - WALL_T - CITY.stairWidth / 2);
+  // Make sure the doors on our route are open.
+  for (const d of city.doors) if (d.buildingId === apt.id) doors.set(d.id, true);
+  world.step();
+
+  // Route in local coordinates: in through the front door, then for each flight walk around to its
+  // foot (front of the building), climb, and step off onto the landing.
+  const route: [number, number][] = [[W / 2, -1.5], [W / 2, 2.6]];
+  for (let f = 0; f < apt.floors; f++) {
+    route.push([W / 2, STAIR_Z0 - 0.8], [stripX(f), STAIR_Z0 - 0.8], [stripX(f), zoneEnd + 0.7], [W / 2, zoneEnd + 0.7]);
+  }
+  let [sx, sz] = fr.pt(route[0][0], route[0][1]);
+  let s = createMoveState({ x: sx, y: CITY.curbHeight + 0.05, z: sz });
+  const motor = new CharacterMotor(RAPIER, world, s);
+  for (const [lx, lz] of route.slice(1)) {
+    const [tx, tz] = fr.pt(lx, lz);
+    for (let i = 0; i < 300; i++) {
+      const dx = tx - s.pos.x, dz = tz - s.pos.z;
+      if (Math.hypot(dx, dz) < 0.25) break;
+      s = motor.step(s, { seq: i, mx: 0, mz: 1, yaw: Math.atan2(-dx, -dz), pitch: 0, b: 0 }, TICK_DT);
+    }
+    const [ex, ez] = fr.pt(lx, lz);
+    assert.ok(Math.hypot(ex - s.pos.x, ez - s.pos.z) < 0.6, `stuck before waypoint (${lx.toFixed(1)}, ${lz.toFixed(1)}) at y=${s.pos.y.toFixed(2)}`);
+  }
+  motor.dispose();
+  const roof = apt.floorY + apt.floors * FH;
+  assert.ok(Math.abs(s.pos.y - roof) < 0.2, `on the roof: y=${s.pos.y.toFixed(2)} expected ${roof.toFixed(2)}`);
+  void D;
+});
+
 test('walking from the road onto a curb keeps speed', () => {
   // Find a straight run from the ring road onto the first block's sidewalk.
   const half = city.halfSize;

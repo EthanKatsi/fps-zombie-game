@@ -61,6 +61,11 @@ Other commits: menu retitle to "The Walking Dead" (`8937010`).
   - Parts: wall segments around openings, window glass (25% broken), slabs with stairwell holes, switchback stairs, railings, interior cross walls with doors, furniture per room purpose, and roof parapets.
   - Shop signs are colour-coded: grocery green, pharmacy white, hardware orange, gun shop red, police blue.
 - **Doors** (`world/doors.ts`) are server-authoritative. The server checks range (2.6 m + slack), a 200 ms per-player cooldown and a 450 ms swing lock, and won't swing a door through a player. Both sides keep the door colliders in sync. After a door moves, `world.step()` is called so scene queries see the new position.
+- **Roof access** (added after M4): every multi-floor building has one more flight from the top floor up
+  through a railed hatch in the roof. Flights start at `STAIR_Z0 = wall + 1.6 m`, leaving a walkway along the
+  front wall. Front doors hinge on the right so an open door never blocks the ground-floor stairs, and
+  furniture keeps a 1.4 m landing clear. The test walks from the street to the roof of a house, an apartment and
+  the police station.
 - **Map hash**: the server sends `hashMap()`, and the client shows "MAP MISMATCH" if its own generation differs.
 - **Rendering** (`client/src/game/MapRenderer.ts`):
   - 64 m chunks, each made of instanced meshes (main / detail / glass) with per-instance colours, about 3 draw calls per chunk
