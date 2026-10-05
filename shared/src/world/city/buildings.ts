@@ -1,13 +1,14 @@
 import { CITY } from '../../config/world';
 import type { ContainerKind } from '../../types/inventory';
 import { addStairs, type Dir } from '../builders';
-import type { BuildingInfo, BuildingType, ContainerSpawn, DoorDef, MapBox } from '../mapData';
+import type { BuildingInfo, BuildingType, ContainerSpawn, DoorDef, DummySpawn, MapBox } from '../mapData';
 
 export interface GenContext {
   boxes: MapBox[];
   doors: DoorDef[];
   containers: ContainerSpawn[];
   buildings: BuildingInfo[];
+  dummies: DummySpawn[];
   rand: () => number;
 }
 

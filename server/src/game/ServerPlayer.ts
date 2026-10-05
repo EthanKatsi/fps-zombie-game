@@ -1,4 +1,5 @@
 import {
+  Buttons,
   CharacterMotor,
   NETWORK,
   createMoveState,
@@ -10,6 +11,7 @@ import {
   type PlayerRecord,
   type Rapier,
   type Vec3,
+  type WeaponDef,
 } from '@grey/shared';
 import type { World } from '@dimforge/rapier3d-compat';
 import type { GameSocket } from './types';
@@ -34,6 +36,16 @@ export class ServerPlayer {
   diedAt = 0;
   /** Item being consumed (eating, bandaging...). */
   using: { slot: number; uid: string; defId: string; endsAt: number } | null = null;
+  /** Aiming down sights (from the latest movement input). */
+  aiming = false;
+  /** Random salt for deterministic shot spread, shared with this client at join. */
+  readonly shotSalt = (Math.random() * 0x7fffffff) | 0;
+  combat: {
+    lastSeq: number;
+    lastAttackAt: number;
+    swing: { at: number; weapon: WeaponDef; uid: string | null } | null;
+    reload: { slot: number; uid: string; endsAt: number } | null;
+  } = { lastSeq: -1, lastAttackAt: -Infinity, swing: null, reload: null };
 
   constructor(
     R: Rapier,
@@ -88,6 +100,7 @@ export class ServerPlayer {
       if (input.seq <= this.lastSeq) continue;
       const before = this.state;
       this.state = this.motor.step(this.state, input, dt);
+      this.aiming = (input.b & Buttons.aim) !== 0;
       if (!before.grounded && this.state.grounded && before.vel.y < 0) onLand?.(-before.vel.y);
       this.lastSeq = input.seq;
       this.credit -= 1;

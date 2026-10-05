@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MOVEMENT, NETWORK, PlayerFlags, lerp, lerpAngle, type NetPlayer } from '@grey/shared';
+import { ITEM_CATEGORY_COLORS, MOVEMENT, NETWORK, PlayerFlags, getItemDef, lerp, lerpAngle, type NetPlayer } from '@grey/shared';
 
 interface Sample {
   t: number;
@@ -12,6 +12,21 @@ interface Sample {
 }
 
 const BODY_COLOR = 0x5b5e4a;
+
+/** Third-person held item: a rough shape per category. */
+const makeHeld = (defId: string): THREE.Object3D | null => {
+  const def = getItemDef(defId);
+  if (!def) return null;
+  const color = new THREE.Color(ITEM_CATEGORY_COLORS[def.category]);
+  const mat = new THREE.MeshStandardMaterial({ color: def.category === 'ranged' ? 0x2b2e31 : color, roughness: 0.6 });
+  let geo: THREE.BufferGeometry;
+  if (def.category === 'ranged') geo = new THREE.BoxGeometry(0.06, 0.09, defId === 'pistol' ? 0.22 : 0.75);
+  else if (def.category === 'melee') geo = new THREE.BoxGeometry(0.05, 0.05, 0.7);
+  else geo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.castShadow = true;
+  return mesh;
+};
 
 const makeNameTag = (name: string): THREE.Sprite => {
   const canvas = document.createElement('canvas');
@@ -40,6 +55,11 @@ class RemotePlayer {
   private readonly tag: THREE.Sprite;
   private buffer: Sample[] = [];
   private crouchBlend = 0;
+  /** Right-hand anchor for the held item (follows head pitch a little). */
+  private readonly hand = new THREE.Group();
+  private heldId = '';
+  private heldMesh: THREE.Object3D | null = null;
+  private attackT = 0;
 
   constructor(readonly id: string, name: string) {
     const mat = new THREE.MeshStandardMaterial({ color: BODY_COLOR, roughness: 0.9 });
@@ -65,6 +85,32 @@ class RemotePlayer {
 
     this.tag = makeNameTag(name);
     this.root.add(this.tag);
+    this.hand.position.set(0.25, 1.15, -0.25);
+    this.root.add(this.hand);
+  }
+
+  setHeld(defId: string): void {
+    if (defId === this.heldId) return;
+    this.heldId = defId;
+    if (this.heldMesh) this.hand.remove(this.heldMesh);
+    this.heldMesh = defId ? makeHeld(defId) : null;
+    if (this.heldMesh) {
+      // Items point forward (-Z in local space, same as the body facing).
+      this.heldMesh.position.z = -0.2;
+      this.hand.add(this.heldMesh);
+    }
+  }
+
+  /** Quick swing/recoil jolt of the held item when this player attacks. */
+  playAttack(): void {
+    this.attackT = 1;
+  }
+
+  /** World position of the held item's tip (muzzle flash source). */
+  muzzle(out: THREE.Vector3): THREE.Vector3 {
+    out.set(0, 0, -0.55);
+    this.hand.updateWorldMatrix(true, false);
+    return out.applyMatrix4(this.hand.matrixWorld);
   }
 
   push(n: NetPlayer, t: number): void {
@@ -77,6 +123,7 @@ class RemotePlayer {
       pitch: n.pitch,
       crouch: (n.f & PlayerFlags.crouching) !== 0,
     });
+    this.setHeld(n.h ?? '');
     if (this.buffer.length > 40) this.buffer.splice(0, this.buffer.length - 40);
   }
 
@@ -117,6 +164,9 @@ class RemotePlayer {
     this.head.position.y = height - 0.17;
     this.head.rotation.x = s.pitch;
     this.tag.position.y = height + 0.35;
+    this.attackT = Math.max(0, this.attackT - dt * 5);
+    this.hand.position.y = height - 0.65;
+    this.hand.rotation.x = s.pitch * 0.8 + this.attackT * 0.9;
   }
 
   dispose(): void {
@@ -175,6 +225,10 @@ export class RemotePlayers {
   update(serverNow: number, dt: number): void {
     const renderTime = serverNow - NETWORK.interpolationDelayMs;
     for (const p of this.players.values()) p.update(renderTime, dt);
+  }
+
+  get(id: string): RemotePlayer | undefined {
+    return this.players.get(id);
   }
 
   get count(): number {

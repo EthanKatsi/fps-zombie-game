@@ -91,11 +91,24 @@ export class SurvivalSystem {
    * Apply damage. `quiet` skips the hit-flash event (used for slow per-tick drains).
    * attacker = the killing player for PvP (milestone 7).
    */
-  damage(p: ServerPlayer, amount: number, cause: DeathCause, attacker: ServerPlayer | null = null, quiet = false): void {
+  damage(
+    p: ServerPlayer,
+    amount: number,
+    cause: DeathCause,
+    attacker: ServerPlayer | null = null,
+    quiet = false,
+    from?: Vec3,
+  ): void {
     if (!p.alive || !(amount > 0)) return;
     const s = p.record.stats;
     s.health = Math.max(0, s.health - amount);
-    if (!quiet) p.socket.emit('damaged', { amount: Math.round(amount), cause });
+    if (!quiet) {
+      p.socket.emit('damaged', {
+        amount: Math.round(amount),
+        cause,
+        ...(from ? { from: [from.x, from.y, from.z] as [number, number, number] } : {}),
+      });
+    }
     if (s.health <= 0) this.kill(p, cause, attacker);
   }
 
@@ -114,6 +127,8 @@ export class SurvivalSystem {
     p.alive = false;
     p.diedAt = now;
     p.using = null;
+    p.combat.reload = null;
+    p.combat.swing = null;
     p.record.stats.health = 0;
     p.record.stats.bleeding = false;
     p.record.deaths++;

@@ -1,5 +1,6 @@
 import { getItemDef } from '../config/items';
 import { LOOT, resolveLootTable } from '../config/loot';
+import { getWeaponDef } from '../config/weapons';
 import type { ItemStack } from '../types/item';
 import { insertStack, type Slots, type UidFactory } from './inventory';
 
@@ -13,6 +14,11 @@ export const makeItem = (defId: string, qty: number, makeUid: UidFactory, rand: 
   if (def.maxDurability) {
     const [lo, hi] = LOOT.durability;
     s.durability = Math.max(1, Math.round(def.maxDurability * (lo + (hi - lo) * rand())));
+  }
+  const mag = getWeaponDef(def.weaponId)?.magazineSize;
+  if (mag) {
+    const [lo, hi] = LOOT.loadedFraction;
+    s.loadedAmmo = Math.round(mag * (lo + (hi - lo) * rand()));
   }
   return s;
 };

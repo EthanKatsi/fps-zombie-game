@@ -53,6 +53,7 @@ export const generateTestMap = (seed = 1337): MapData => {
     const x = (rand() * 2 - 1) * (half - 6);
     const z = (rand() * 2 - 1) * (half - 6);
     if (Math.hypot(x - bx, z - bz) < 12 || Math.hypot(x, z) < 6) continue;
+    if (Math.abs(x) < 10 && z < 0 && z > -19) continue; // firing lane + dummy row
     if (rand() < 0.5) {
       const s = 0.8 + rand() * 0.8;
       boxes.push({ p: [x, s / 2, z], s: [s, s, s], r: [0, rand() * Math.PI, 0], m: 'crate' });
@@ -69,5 +70,7 @@ export const generateTestMap = (seed = 1337): MapData => {
     { x: -5, y: 0.1, z: -5 },
   ];
 
-  return { id: 'testmap', seed, halfSize: half, boxes, doors: [], buildings: [], containers: [], spawnPoints };
+  // A few dummies in a row north of the spawn area, facing it.
+  const dummies = [-6, -3, 0, 3, 6].map((x, i) => ({ id: i, p: [x, 0, -14] as [number, number, number], yaw: Math.PI }));
+  return { id: 'testmap', seed, halfSize: half, boxes, doors: [], buildings: [], containers: [], dummies, spawnPoints };
 };

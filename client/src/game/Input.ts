@@ -15,6 +15,10 @@ export class Input {
   locked = false;
   private skipNextMove = false;
   private wheel = 0;
+  /** Mouse buttons currently held (0 = left, 2 = right). */
+  private mouse = new Set<number>();
+  /** Set by the weapon controller each frame: right mouse is aiming down sights right now. */
+  aimActive = false;
   onLockChange: (locked: boolean) => void = () => {};
 
   constructor(private readonly element: HTMLElement) {
@@ -45,7 +49,14 @@ export class Input {
     });
 
     document.addEventListener('mousedown', (e) => {
-      if (this.locked) this.pressed.add(`Mouse${e.button}`);
+      if (!this.locked) return;
+      this.pressed.add(`Mouse${e.button}`);
+      this.mouse.add(e.button);
+    });
+    document.addEventListener('mouseup', (e) => this.mouse.delete(e.button));
+    // Right-click is aim, never the browser menu.
+    document.addEventListener('contextmenu', (e) => {
+      if (this.locked) e.preventDefault();
     });
 
     document.addEventListener(
@@ -62,6 +73,7 @@ export class Input {
       if (!this.locked) {
         this.keys.clear();
         this.pressed.clear();
+        this.mouse.clear();
       }
       this.onLockChange(this.locked);
     });
@@ -80,6 +92,10 @@ export class Input {
     } catch {
       plain();
     }
+  }
+
+  isMouseDown(button: number): boolean {
+    return this.mouse.has(button);
   }
 
   /** Accumulated wheel notches since the last call (+ = down). */
@@ -107,6 +123,7 @@ export class Input {
     if (this.down('ShiftLeft') || this.down('ShiftRight')) b |= Buttons.sprint;
     // Not Ctrl: Ctrl+W would close the browser tab mid-sprint.
     if (this.down('KeyC')) b |= Buttons.crouch;
+    if (this.aimActive) b |= Buttons.aim;
     return { mx, mz, b };
   }
 }

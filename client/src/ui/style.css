@@ -144,15 +144,44 @@ button:disabled {
 }
 
 #crosshair {
+  --gap: 6px;
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 4px;
-  height: 4px;
-  margin: -2px 0 0 -2px;
+  width: 0;
+  height: 0;
+}
+
+#crosshair i {
+  position: absolute;
   background: rgba(255, 255, 255, 0.85);
-  border-radius: 50%;
   box-shadow: 0 0 2px #000;
+}
+
+#crosshair .t,
+#crosshair .b {
+  width: 2px;
+  height: 8px;
+  left: -1px;
+}
+
+#crosshair .l,
+#crosshair .r {
+  width: 8px;
+  height: 2px;
+  top: -1px;
+}
+
+#crosshair .t { bottom: var(--gap); }
+#crosshair .b { top: var(--gap); }
+#crosshair .l { right: var(--gap); }
+#crosshair .r { left: var(--gap); }
+
+#crosshair .dot {
+  width: 2px;
+  height: 2px;
+  left: -1px;
+  top: -1px;
 }
 
 #stats {
@@ -592,4 +621,63 @@ kbd {
   #stats {
     bottom: 92px;
   }
+}
+
+/* ---------------------------------------------------------------- combat */
+
+#hitmarker {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+}
+
+#hitmarker i {
+  position: absolute;
+  width: 10px;
+  height: 2px;
+  background: #fff;
+  box-shadow: 0 0 2px #000;
+}
+
+#hitmarker i:nth-child(1) { transform: translate(5px, -9px) rotate(-45deg); }
+#hitmarker i:nth-child(2) { transform: translate(-15px, -9px) rotate(45deg); }
+#hitmarker i:nth-child(3) { transform: translate(5px, 7px) rotate(45deg); }
+#hitmarker i:nth-child(4) { transform: translate(-15px, 7px) rotate(-45deg); }
+#hitmarker.strong i { background: #e0372e; width: 13px; }
+
+#ammo {
+  position: absolute;
+  right: 24px;
+  bottom: 22px;
+  font: bold 26px Consolas, monospace;
+  text-shadow: 0 2px 2px #000;
+  letter-spacing: 0.04em;
+}
+
+#scope {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, transparent 0, transparent 31vmin, #000 31.3vmin);
+}
+
+#scope::before,
+#scope::after {
+  content: '';
+  position: absolute;
+  background: rgba(0, 0, 0, 0.85);
+}
+
+#scope::before { left: 0; right: 0; top: 50%; height: 1px; }
+#scope::after { top: 0; bottom: 0; left: 50%; width: 1px; }
+
+#dmg-dir {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  border-top: 6px solid rgba(200, 20, 20, 0.85);
+  transform-origin: center;
+  filter: blur(1px);
 }

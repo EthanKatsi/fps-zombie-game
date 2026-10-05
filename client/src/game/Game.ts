@@ -6,6 +6,8 @@ import {
   DoorColliders,
   INVENTORY,
   getItemDef,
+  getWeaponDef,
+  weaponForItem,
   PLAYER_GROUPS,
   RENDER,
   SURVIVAL,
@@ -28,6 +30,13 @@ import { DoorRenderer, MapRenderer } from './MapRenderer';
 import { GroundItemsView } from './GroundItemsView';
 import { InventoryUI } from '../ui/InventoryUI';
 import { SurvivalHud } from '../ui/SurvivalHud';
+import { CombatHud } from '../ui/CombatHud';
+import { Effects } from './Effects';
+import { DummiesView } from './DummiesView';
+import { Viewmodel } from './weapons/Viewmodel';
+import { WeaponController } from './weapons/WeaponController';
+
+const BASE_FOV = 75;
 
 export interface GameUi {
   setPaused(paused: boolean): void;
@@ -56,7 +65,13 @@ export class Game {
   private readonly groundItems: GroundItemsView;
   private readonly inventoryUI: InventoryUI;
   private readonly hud = new SurvivalHud();
+  private readonly combatHud = new CombatHud();
+  private readonly effects: Effects;
+  private readonly viewmodel = new Viewmodel();
+  private readonly weapons: WeaponController;
+  private readonly dummies: DummiesView;
   private dead = false;
+  private readonly tmpV = new THREE.Vector3();
   private readonly rayDir = new THREE.Vector3();
   private target: Target = null;
   private mapMismatch = false;
@@ -82,9 +97,10 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.autoClear = false; // world + viewmodel are drawn in two passes
     container.appendChild(this.renderer.domElement);
 
-    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, RENDER.cameraFar);
+    this.camera = new THREE.PerspectiveCamera(BASE_FOV, window.innerWidth / window.innerHeight, 0.05, RENDER.cameraFar);
     this.scene.add(this.camera);
     const sky = new THREE.Color(0x8a8c86);
     this.scene.background = sky;
@@ -126,6 +142,9 @@ export class Game {
     this.scene.add(this.doorRenderer.mesh);
     this.containerIndex = new ContainerIndex(this.map.containers);
     this.groundItems = new GroundItemsView(this.scene);
+    this.effects = new Effects(this.scene);
+    this.dummies = new DummiesView(this.scene, this.map.dummies, join.dummiesDown);
+    this.viewmodel.setAspect(window.innerWidth / window.innerHeight);
 
     // --- items UI (pure view; every change goes through the server) ---
     this.inventoryUI = new InventoryUI({
@@ -147,6 +166,21 @@ export class Game {
     this.remotes = new RemotePlayers(this.scene, join.playerId);
     for (const p of join.players) this.remotes.setName(p.id, p.username);
     this.online = join.players.length;
+    this.weapons = new WeaponController({
+      R,
+      world: this.world,
+      conn,
+      input: this.input,
+      local: this.local,
+      camera: this.camera,
+      viewmodel: this.viewmodel,
+      effects: this.effects,
+      hud: this.combatHud,
+      playerId: join.playerId,
+      shotSalt: join.shotSalt,
+      useItem: (slot) => conn.socket.emit('invOp', { op: 'use', slot }),
+      toast: (t) => this.ui.toast(t),
+    });
 
     // --- network ---
     const s = conn.socket;
@@ -180,9 +214,49 @@ export class Game {
     s.on('groundItems', (msg) => this.groundItems.apply(msg));
     s.on('notice', ({ text }) => this.ui.toast(text));
     s.on('stats', (st) => this.hud.setStats(st));
-    s.on('damaged', ({ amount }) => this.hud.hit(amount));
-    s.on('useStarted', ({ defId, durationMs }) => this.hud.startUse(getItemDef(defId)?.name ?? defId, durationMs));
-    s.on('useEnded', () => this.hud.endUse());
+    s.on('damaged', ({ amount, from }) => {
+      this.hud.hit(amount);
+      if (from) {
+        // Angle of the attacker relative to where we're looking (0 = ahead, + = to the right).
+        const me = this.local.state.pos;
+        const yawTo = Math.atan2(-(from[0] - me.x), -(from[2] - me.z));
+        this.combatHud.damageFrom(-(yawTo - this.input.yaw));
+      }
+    });
+    s.on('useStarted', ({ defId, durationMs }) => {
+      this.hud.startUse(getItemDef(defId)?.name ?? defId, durationMs);
+      this.viewmodel.playUse(durationMs);
+    });
+    s.on('useEnded', () => {
+      this.hud.endUse();
+      this.viewmodel.stopUse();
+    });
+    s.on('weaponState', (msg) => this.weapons.onWeaponState(this.inventoryUI.inventory, msg));
+    s.on('reloadStarted', ({ durationMs }) => {
+      this.weapons.onReloadStarted(durationMs);
+      this.hud.startUse('Reloading', durationMs);
+    });
+    s.on('reloadEnded', () => {
+      this.weapons.onReloadEnded();
+      this.hud.endUse();
+    });
+    s.on('hitConfirm', ({ head, kill }) => this.combatHud.hit(head || kill));
+    s.on('shotFired', (e) => {
+      const w = getWeaponDef(e.weapon);
+      const remote = this.remotes.get(e.shooter);
+      remote?.playAttack();
+      const origin = remote ? remote.muzzle(this.tmpV) : this.tmpV.set(e.o[0], e.o[1], e.o[2]);
+      if (w && w.kind !== 'melee') {
+        if (w.noiseRadius > 30) this.effects.muzzleFlash(origin.clone());
+        for (const end of e.ends) this.effects.tracer(origin.clone(), new THREE.Vector3(end[0], end[1], end[2]));
+      }
+      for (const end of e.ends) if (end[3]) this.effects.impact(new THREE.Vector3(end[0], end[1], end[2]), end[3] === 2);
+    });
+    s.on('projectile', ({ id, p, v }) =>
+      this.effects.spawnBolt(id, new THREE.Vector3(...p), new THREE.Vector3(...v), getWeaponDef('crossbow')?.projectileGravity ?? 9.8),
+    );
+    s.on('projectileEnd', ({ id, p, hit }) => this.effects.endBolt(id, new THREE.Vector3(...p), hit));
+    s.on('dummyState', ({ id, down }) => this.dummies.setDown(id, down));
     s.on('died', (info) => {
       this.dead = true;
       if (this.inventoryUI.isOpen) this.closeInventory(false);
@@ -190,6 +264,9 @@ export class Game {
       this.ui.setPaused(false);
       if (document.pointerLockElement) document.exitPointerLock();
       this.hud.showDeath(info, () => conn.socket.emit('respawn'));
+      this.weapons.reset();
+      this.combatHud.setScope(false);
+      this.combatHud.setAmmo(null);
     });
     s.on('respawned', ({ state, inventory, stats }) => {
       this.dead = false;
@@ -217,7 +294,6 @@ export class Game {
   private closeInventory(relock: boolean): void {
     if (this.inventoryUI.openContainerKey) this.conn.socket.emit('closeContainer');
     this.inventoryUI.close();
-    this.hud.hideDeath();
     if (relock) this.input.requestLock();
     else this.ui.setPaused(!this.input.locked);
   }
@@ -251,10 +327,6 @@ export class Game {
     if (this.input.consumePress('KeyQ') && held) {
       this.conn.socket.emit('invOp', { op: 'drop', from: { owner: 'self', index: active } });
     }
-    // Left click with a consumable in hand: eat / drink / bandage.
-    if (this.input.consumePress('Mouse0') && held && getItemDef(held.defId)?.consume && !this.hud.using) {
-      this.conn.socket.emit('invOp', { op: 'use', slot: active });
-    }
   }
 
   /** Called by the overlay when the player clicks "resume". */
@@ -266,6 +338,7 @@ export class Game {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.viewmodel.setAspect(this.camera.aspect);
   };
 
   private frame = (now: number) => {
@@ -285,18 +358,47 @@ export class Game {
 
     this.local.updateCamera(this.camera, this.accumulator / TICK_DT, dt);
     this.hud.update(dt);
-    if (!this.inventoryUI.isOpen && !this.dead) {
+    const inv = this.inventoryUI.inventory;
+    const playing = !this.inventoryUI.isOpen && !this.dead;
+    if (playing) {
       this.updateHotbarInput();
       this.updateInteraction();
+      if (inv) this.weapons.update(dt, inv, this.hud.using);
     }
+    this.updateAim(dt);
     this.remotes.update(this.conn.serverNow(), dt);
     this.doorRenderer.update(dt);
+    this.dummies.update(dt);
+    this.effects.update(dt);
     this.mapRenderer.update(this.camera.position);
     this.updateSun();
+
+    // Pass 1: the world. Pass 2: the first-person viewmodel on top (never clips into walls).
+    this.renderer.clear();
     this.renderer.render(this.scene, this.camera);
+    const v = this.local.state.vel;
+    this.viewmodel.visible = !this.dead && !this.scoped;
+    this.viewmodel.update(dt, Math.hypot(v.x, v.z), this.weapons.aiming);
+    this.renderer.clearDepth();
+    this.renderer.render(this.viewmodel.scene, this.viewmodel.camera);
 
     this.updateHud(dt);
   };
+
+  private scoped = false;
+
+  /** Aim-down-sights zoom; the rifle swaps to a full-screen scope once zoomed in. */
+  private updateAim(dt: number): void {
+    const held = this.inventoryUI.inventory?.slots[this.inventoryUI.activeHotbar];
+    const w = weaponForItem(held?.defId);
+    const target = this.weapons.aiming && !this.dead ? (w.adsFov ?? BASE_FOV) : BASE_FOV;
+    if (Math.abs(this.camera.fov - target) > 0.01) {
+      this.camera.fov += (target - this.camera.fov) * (1 - Math.exp(-dt * 16));
+      this.camera.updateProjectionMatrix();
+    }
+    this.scoped = this.weapons.aiming && w.id === 'rifle' && this.camera.fov < (w.adsFov ?? BASE_FOV) + 6;
+    this.combatHud.setScope(this.scoped);
+  }
 
   /** Look-at raycast: what would E interact with? Ground items > doors > containers. */
   private updateInteraction(): void {

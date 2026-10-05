@@ -2,6 +2,7 @@ import type RAPIER_NS from '@dimforge/rapier3d-compat';
 import type { Collider, KinematicCharacterController, World } from '@dimforge/rapier3d-compat';
 import { MOVEMENT } from '../config/movement';
 import { SURVIVAL } from '../config/survival';
+import { COMBAT } from '../config/weapons';
 import { clamp, degToRad } from '../math/math';
 import type { Vec3 } from '../types/common';
 import { PLAYER_GROUPS } from './collision';
@@ -12,6 +13,8 @@ export const Buttons = {
   jump: 1,
   sprint: 2,
   crouch: 4,
+  /** Aiming down sights: slower movement, no sprint. */
+  aim: 8,
 } as const;
 
 /** One tick of player intent. Sent client -> server, replayed during reconciliation. */
@@ -182,7 +185,8 @@ export class CharacterMotor {
     const moving = len > 0.01;
 
     // --- sprint + stamina ---
-    const wantsSprint = (input.b & Buttons.sprint) !== 0 && !s.crouching && mz > 0.1;
+    const aiming = (input.b & Buttons.aim) !== 0;
+    const wantsSprint = (input.b & Buttons.sprint) !== 0 && !s.crouching && !aiming && mz > 0.1;
     s.sprinting = wantsSprint && (s.sprinting ? s.stamina > 0 : s.stamina >= st.minToSprint);
     if (s.sprinting && moving) {
       s.stamina = Math.max(0, s.stamina - st.sprintDrainPerSec * dt);
@@ -195,6 +199,7 @@ export class CharacterMotor {
 
     let speed = s.crouching ? MOVEMENT.crouchSpeed : s.sprinting ? MOVEMENT.sprintSpeed : MOVEMENT.walkSpeed;
     if (mz < 0) speed *= MOVEMENT.backpedalMultiplier;
+    if (aiming) speed *= COMBAT.aimMoveMultiplier;
 
     // --- horizontal velocity (exponential approach to target) ---
     const k = s.grounded ? MOVEMENT.groundAccel : MOVEMENT.airAccel;

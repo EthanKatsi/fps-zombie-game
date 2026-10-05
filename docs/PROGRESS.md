@@ -11,8 +11,8 @@ Original requirements: [SPEC.md](SPEC.md). Design: [ARCHITECTURE.md](ARCHITECTUR
 | 2 | City generation, buildings, doors, stairs, performance | ✅ Done | `5a8abfe` |
 | 3 | Inventory, looting containers, item pickup/drop | ✅ Done | `8e67c76` |
 | 4 | Survival stats, death, respawn | ✅ Done | `72da7a7` |
-| 5 | Weapons & FPS combat with viewmodels | ⏳ Next | |
-| 6 | Zombies (navmesh AI, noise/vision, combat) | | |
+| 5 | Weapons & FPS combat with viewmodels | ✅ Done | see `git log` |
+| 6 | Zombies (navmesh AI, noise/vision, combat) | ⏳ Next | |
 | 7 | PvP, lag-compensated hits, death loot bags, kill feed | | |
 | 8 | Groups/teams and chat | | |
 | 9 | Base building, storage, respawn beds | | |
@@ -125,6 +125,42 @@ Other commits: menu retitle to "The Walking Dead" (`8937010`).
 - If a player disconnects while dead, their next join starts a fresh life (`reviveAt`).
 - **Client**: `ui/SurvivalHud.ts` handles the HP, food, water and stamina bars (pulsing when low), the BLEEDING warning, the hit flash and low-health vignette, the use progress bar, and the death screen.
 
+## Milestone 5: combat ✅
+
+- **Config**: `shared/src/config/weapons.ts` defines the 8 weapons plus fists. It covers damage, headshot multiplier,
+  fire rate, range, noise radius, bleed chance, stamina cost and windup (melee), and magazine, reload time,
+  pellets, spread (hip/ADS/moving), recoil, ADS FOV and projectile speed/gravity (guns). Global rules live in `COMBAT`.
+- **Shared math** (`shared/src/combat/combat.ts`):
+  - `spreadDegrees` grows with movement and being airborne, and shrinks when aiming or crouching.
+  - `pelletDirections` is deterministic, seeded by `shotSeed(salt, seq)`. The server sends the salt at join, and the
+    client numbers its attacks strictly +1, so client tracers match the server's pellets and the client can't shop
+    for lucky seeds.
+  - Humanoid hitboxes: a head sphere plus a body capsule, with ray tests.
+- **ADS** is `Buttons.aim` in the movement input. Aiming walks at 60% speed with no sprint, and it's predicted.
+- **Server** (`server/src/game/WeaponSystem.ts`):
+  - Validates every attack: seq, fire rate (accepting up to 20% early for jitter), ammo, durability, stamina, and no
+    attacking mid-reload or mid-swing.
+  - Hitscan sums per-target damage across pellets.
+  - Melee lands after its windup, using a 5-ray sweep from the latest view direction.
+  - Crossbow bolts are server projectiles with gravity. A bolt that hits a wall can drop back as a pickup (70%).
+  - Reload moves ammo from the inventory into `ItemStack.loadedAmmo`. Switching weapons cancels it.
+  - All player damage goes through `SurvivalSystem.damage(..., 'player', attacker, false, from)`, which sends the
+    victim `damaged` with a direction and the shooter `hitConfirm`.
+  - Shots are broadcast within 250 m (`shotFired`) for effects, and recorded in `NoiseSystem` for M6 zombies.
+- **Dummies**: 5 on a shooting range in the police block (`generateCity` `shootingRange`), plus 5 on the test map.
+  150 HP each; they tip over and get back up after 8 s (`DummySystem`).
+- **Client**:
+  - `weapons/Viewmodel.ts`: procedural low-poly models with equip, swing, kick, reload, use, ADS and bob. Drawn in a
+    second render pass so they never clip into walls.
+  - `weapons/WeaponController.ts`: input, local prediction (ammo, stamina, tracers, recoil with partial recovery),
+    reload and ADS.
+  - `Effects.ts`: tracers, a pooled muzzle-flash light, impact bursts and bolts.
+  - `ui/CombatHud.ts`: a crosshair that widens with spread, an ammo counter, hit markers (red for head/kill), the
+    rifle scope overlay and a damage direction arc.
+  - Remote players show their held item and a muzzle flash.
+- **Not yet**: lag compensation (M7). The server currently tests against present positions, so fast-moving targets
+  are a little harder to hit at high ping. Structure damage from melee comes in M10.
+
 ## Tests (run `npm test`)
 
 - `shared/test/movement.test.ts`: physics, determinism, crouch, stairs.
@@ -134,6 +170,16 @@ Other commits: menu retitle to "The Walking Dead" (`8937010`).
 - `server/test/doors.test.ts`: door range, swing blocking, junk ids.
 - `server/test/items.test.ts`: starting kit, looting in range, no looting through walls, weight limit, crafting, drop and pickup across players, auto-close, junk ops ignored.
 - `server/test/survival.test.ts`: drain, eating with use time, cancelling, refusing a useless use, starvation death leading to a lootable bag that vanishes when emptied, respawn delay and kit, fall damage and bleeding.
+- `shared/test/combat.test.ts`: weapon mapping, deterministic pellets inside the cone, spread rules, head and body hitboxes.
+- `server/test/combat.test.ts`:
+  - pistol vs dummy, with ammo and wear
+  - fire-rate and seq enforcement
+  - reload, and cancelling it by switching
+  - melee stamina and damage
+  - headshot multiplier, and kill confirmation with the killer's name
+  - crossbow projectile
+  - knocking a dummy down
+- Gotcha: a teleported test player counts as airborne (+4° spread) until they send a movement input. Use `settle()`.
 - Gotcha: the test map scatters wrecked cars just outside a 6 m radius of the origin. Put test players within ~2 m of the origin, or line-of-sight checks will (correctly) fail.
 
 ## Known issues / notes
@@ -145,13 +191,6 @@ Other commits: menu retitle to "The Walking Dead" (`8937010`).
 
 ## Plan for the next milestones
 
-- **M5 Combat**:
-  - `shared/src/config/weapons.ts` (WeaponDef numbers).
-  - Viewmodels (primitive meshes) with swing, fire and reload animations.
-  - Client fire events carrying shot time, direction and seq. The server validates fire rate, ammo and line of sight.
-  - Hitscan with spread and recoil; crossbow bolts as server projectiles.
-  - Headshots via separate head/body hit volumes.
-  - Melee costs stamina, with windup timing.
 - **M6 Zombies**: recast-navigation-js navmesh built from the city boxes on the server, AI state machine, a spatial hash for interest management, and type configs.
 - **M7 PvP**: lag compensation using a position history ring buffer per player (rewind to the shooter's time minus the interpolation delay), death bags, kill feed, killer name on the death screen.
 - **M8–M10**: groups (DB tables), chat, structures with a ghost preview and snapping, beds, storage chests (persisted containers), structure health, raiding, and the offline-raid-protection config flag (already in `server/src/config.ts`).

@@ -20,13 +20,17 @@
             <button type="submit" id="join-btn">Enter the city</button>
           </form>
           <p id="menu-error" class="error"></p>
-          <p class="hint">WASD move · Mouse look · Shift sprint · C crouch · Space jump · E use · Tab inventory · 1-9 hotbar · Q drop · Esc pause</p>
+          <p class="hint">WASD move · Mouse look · Shift sprint · C crouch · Space jump · LMB attack/use · RMB aim · R reload · E use · Tab inventory · 1-9 hotbar · Q drop · Esc pause</p>
         </div>
       </section>
 
       <!-- In-game HUD -->
       <section id="hud" class="hidden">
-        <div id="crosshair"></div>
+        <div id="scope" class="hidden"></div>
+        <div id="crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="dot"></i></div>
+        <div id="hitmarker" class="hidden"><i></i><i></i><i></i><i></i></div>
+        <div id="dmg-dir" class="hidden"></div>
+        <div id="ammo" class="hidden"></div>
         <div id="prompt" class="hidden"><kbd>E</kbd> <span id="prompt-text"></span></div>
         <div id="vignette"></div>
         <div id="stats">

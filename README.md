@@ -3,8 +3,9 @@
 Browser-based multiplayer open-world zombie survival FPS set in the abandoned city of Calder Point.
 TypeScript · Three.js · Rapier · Node · Socket.IO · SQLite.
 
-> Work in progress. Milestones 1-4 are done: multiplayer first-person movement in a procedurally generated
-> city with enterable buildings, doors and stairs, plus inventory, looting, crafting, item drops, survival stats, death bags and respawning.
+> Work in progress. Milestones 1-5 are done: multiplayer first-person movement in a procedurally generated
+> city with enterable buildings, doors and stairs, plus inventory, looting, crafting, item drops, survival stats, death bags, respawning, and melee/gun combat.
+> A shooting range with training dummies is next to the police station (blue sign).
 > Status and next steps: [docs/PROGRESS.md](docs/PROGRESS.md). A full README
 > lands in milestone 11. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
 
@@ -31,7 +32,9 @@ Open a second browser window with a different name to see multiplayer.
 | Tab / I | Inventory (drag to move, Ctrl+drag split, right-click quick-move, drag outside to drop) |
 | 1-9 / mouse wheel | Select hotbar slot |
 | Q | Drop held item |
-| Left click | Use the held food/drink/medicine (or double-click it in the inventory) |
+| Left click | Attack (fists / melee / shoot), or use held food/drink/medicine |
+| Right click (hold) | Aim down sights (guns) |
+| R | Reload |
 | Esc | Release mouse / pause |
 
 ## Other commands
@@ -46,7 +49,7 @@ npm start          # server only; also serves client/dist at http://localhost:25
 ## Tweaking balance
 
 Game-balance values live in `shared/src/config/` (restart the server after editing).
-Items, loot tables, recipes and inventory limits are in `shared/src/config/{items,loot,crafting,inventory}.ts`.
+Weapon stats are in `shared/src/config/weapons.ts`. Items, loot tables, recipes and inventory limits are in `shared/src/config/{items,loot,crafting,inventory}.ts`.
 City layout values (blocks, street widths, building mix, car density) are in `shared/src/config/world.ts`.
 Server settings (port, DB path, map id/seed, offline raid protection) live in `server/src/config.ts` and can be
 overridden with environment variables (`PORT`, `DB_PATH`, `MAP_ID`, `MAP_SEED`, `OFFLINE_RAID_PROTECTION`, ...).

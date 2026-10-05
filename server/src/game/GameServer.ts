@@ -27,6 +27,9 @@ import { SERVER_CONFIG } from '../config';
 import { ServerPlayer } from './ServerPlayer';
 import { InventorySystem } from './InventorySystem';
 import { SurvivalSystem, giveStartingKit, netStats } from './SurvivalSystem';
+import { WeaponSystem } from './WeaponSystem';
+import { DummySystem } from './DummySystem';
+import { NoiseSystem } from './NoiseSystem';
 import type { GameIO, GameSocket } from './types';
 
 const r2 = (n: number): number => Math.round(n * 100) / 100;
@@ -41,6 +44,9 @@ export class GameServer {
   readonly doors: DoorColliders;
   readonly items: InventorySystem;
   readonly survival: SurvivalSystem;
+  readonly weapons: WeaponSystem;
+  readonly dummies: DummySystem;
+  readonly noise = new NoiseSystem();
   private doorsDirty = false;
   /** Door id -> time (ms) until which it can't be toggled again (swing animation). */
   private readonly doorBusyUntil = new Map<number, number>();
@@ -68,6 +74,8 @@ export class GameServer {
     this.world.step(); // populate the broad-phase so scene queries see the map
     this.items = new InventorySystem(R, this.world, this.map, () => this.players.values());
     this.survival = new SurvivalSystem(this.items, () => this.spawnPoint());
+    this.dummies = new DummySystem(this.map.dummies, io);
+    this.weapons = new WeaponSystem(R, this.world, () => this.players.values(), this.survival, this.items, this.dummies, this.noise);
     console.log(`[game] world built in ${Math.round(performance.now() - t0)} ms`);
     io.on('connection', (s) => this.onConnection(s));
   }
@@ -149,6 +157,12 @@ export class GameServer {
     socket.on('respawn', () => {
       if (player) this.survival.respawn(player);
     });
+    socket.on('attack', (req) => {
+      if (player) this.weapons.attack(player, req);
+    });
+    socket.on('reload', () => {
+      if (player) this.weapons.reload(player);
+    });
 
     socket.on('disconnect', () => {
       if (!player) return;
@@ -207,6 +221,8 @@ export class GameServer {
         openDoors: this.doors.openIds(),
         inventory: player.inventory,
         stats: netStats(player),
+        shotSalt: player.shotSalt,
+        dummiesDown: this.dummies.downIds(),
         players: [...this.players.values()].map((p) => ({ id: p.id, username: p.username })),
       });
       socket.broadcast.emit('playerJoined', { id: player.id, username: player.username });
@@ -296,6 +312,9 @@ export class GameServer {
 
     const now = performance.now();
     this.survival.update(this.players.values(), TICK_DT, now);
+    this.weapons.update(this.players.values(), now, TICK_DT);
+    this.dummies.update(now);
+    this.noise.prune(now);
     if (this.tick % 10 === 0) this.items.update([...this.players.values()], now);
     if (this.tick % 15 === 0) this.survival.flushStats(this.players.values());
 
@@ -321,6 +340,7 @@ export class GameServer {
           (s.crouching ? PlayerFlags.crouching : 0) |
           (s.grounded ? PlayerFlags.grounded : 0) |
           (s.sprinting ? PlayerFlags.sprinting : 0),
+        h: p.inventory.slots[p.inventory.activeHotbar]?.defId ?? '',
       });
     }
 

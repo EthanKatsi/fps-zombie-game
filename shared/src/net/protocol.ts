@@ -5,7 +5,7 @@ import type { SurvivalStats } from '../types/player';
 import type { MoveInput, MoveState } from '../sim/movement';
 
 /** Bump when the wire format changes; server rejects mismatched clients. */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 // ---------- Client -> Server ----------
 
@@ -24,6 +24,8 @@ export interface NetPlayer {
   pitch: number;
   /** Bit flags, see PlayerFlags. */
   f: number;
+  /** Item def id held in the active hotbar slot ('' = empty hands). */
+  h: string;
 }
 
 export const PlayerFlags = {
@@ -48,6 +50,34 @@ export interface JoinAccepted {
   players: PlayerInfo[];
   inventory: Inventory;
   stats: NetStats;
+  /** Per-session salt for deterministic shot spread (see shotSeed). */
+  shotSalt: number;
+  /** Ids of shooting-range dummies currently knocked down. */
+  dummiesDown: number[];
+}
+
+/** Attack with whatever is in the active hotbar slot (fists if nothing usable). */
+export interface AttackRequest {
+  /** Strictly increasing by 1 per attack; seeds the spread. */
+  seq: number;
+  /** Camera forward at the moment of the shot (unit vector). */
+  dir: [number, number, number];
+  /** Aiming down sights. */
+  aim: boolean;
+}
+
+export type HitKind = 'player' | 'dummy' | 'zombie';
+
+/** Where a pellet / swing ended: 0 = nothing, 1 = world, 2 = flesh. */
+export type ShotEnd = [number, number, number, 0 | 1 | 2];
+
+/** Visual/audio broadcast of someone else's attack. */
+export interface ShotEvent {
+  shooter: PlayerId;
+  weapon: string;
+  /** Muzzle / swing origin. */
+  o: [number, number, number];
+  ends: ShotEnd[];
 }
 
 /** Survival stats as sent to the owning client (stamina travels in MoveState instead). */
@@ -124,12 +154,23 @@ export interface ServerToClientEvents {
   notice: (msg: { text: string }) => void;
   /** Own survival stats, sent when they change. */
   stats: (s: NetStats) => void;
-  damaged: (msg: { amount: number; cause: DeathCause }) => void;
+  /** `from` = attacker position, for the damage direction indicator. */
+  damaged: (msg: { amount: number; cause: DeathCause; from?: [number, number, number] }) => void;
   died: (info: DeathInfo) => void;
   respawned: (msg: { state: MoveState; inventory: Inventory; stats: NetStats }) => void;
   /** Eating / bandaging etc. in progress. */
   useStarted: (msg: { defId: string; durationMs: number }) => void;
   useEnded: (msg: { completed: boolean }) => void;
+  /** Your attack hit something. */
+  hitConfirm: (msg: { kind: HitKind; head: boolean; kill: boolean }) => void;
+  /** Ammo / condition of a weapon after firing (cheaper than a full inventory). */
+  weaponState: (msg: { uid: string; loaded: number; durability?: number }) => void;
+  reloadStarted: (msg: { durationMs: number }) => void;
+  reloadEnded: (msg: { completed: boolean }) => void;
+  shotFired: (e: ShotEvent) => void;
+  projectile: (msg: { id: string; owner: PlayerId; p: [number, number, number]; v: [number, number, number] }) => void;
+  projectileEnd: (msg: { id: string; p: [number, number, number]; hit: 0 | 1 | 2 }) => void;
+  dummyState: (msg: { id: number; down: boolean }) => void;
 }
 
 export interface ClientToServerEvents {
@@ -142,4 +183,6 @@ export interface ClientToServerEvents {
   closeContainer: () => void;
   respawn: () => void;
   cancelUse: () => void;
+  attack: (req: AttackRequest) => void;
+  reload: () => void;
 }

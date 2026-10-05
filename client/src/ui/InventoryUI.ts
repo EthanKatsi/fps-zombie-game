@@ -256,6 +256,7 @@ export class InventoryUI {
       if (fx.length) lines.push(`<div>${fx.join(' · ')}</div>`);
     }
     if (def.consume && ref.owner === 'self') lines.push(`<div class="muted">Double-click (or left-click in hand) to use</div>`);
+    if (s.loadedAmmo !== undefined) lines.push(`<div class="muted">Loaded: ${s.loadedAmmo}</div>`);
     if (def.maxDurability && s.durability !== undefined) {
       lines.push(`<div class="muted">Condition ${Math.round((s.durability / def.maxDurability) * 100)}%</div>`);
     }

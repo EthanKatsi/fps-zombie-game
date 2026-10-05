@@ -14,7 +14,7 @@ const CAR_COLORS = ['car_red', 'car_blue', 'car_white', 'car_rust', 'car_green',
  */
 export const generateCity = (seed: number): MapData => {
   const rand = mulberry32(seed);
-  const ctx: GenContext = { boxes: [], doors: [], containers: [], buildings: [], rand };
+  const ctx: GenContext = { boxes: [], doors: [], containers: [], buildings: [], dummies: [], rand };
   const { boxes } = ctx;
   const N = CITY.blocksPerSide;
   const B = CITY.blockSize;
@@ -90,6 +90,7 @@ export const generateCity = (seed: number): MapData => {
           else if (kind === 'residential') type = rand() < 0.9 ? 'house' : null;
 
           if (type) placeBuilding(ctx, type, lot, CURB);
+          else if (kind === 'police' && qx === 1 && qz === 0) shootingRange(ctx, lot, CURB);
           else if (kind === 'park') parkLot(ctx, lot, CURB);
           else if (kind === 'residential') vacantLot(ctx, lot, CURB);
           else parkingLot(ctx, lot, CURB);
@@ -158,6 +159,7 @@ export const generateCity = (seed: number): MapData => {
     doors: ctx.doors,
     buildings: ctx.buildings,
     containers: ctx.containers,
+    dummies: ctx.dummies,
     spawnPoints,
   };
 };
@@ -278,6 +280,24 @@ const parkFence = (boxes: MapBox[], x0: number, z0: number, B: number, sw: numbe
   fx(a, mx - gap / 2, d); fx(mx + gap / 2, b, d);
   fz(a, c, mz - gap / 2); fz(a, mz + gap / 2, d);
   fz(b, c, mz - gap / 2); fz(b, mz + gap / 2, d);
+};
+
+/** Police training range: a firing line and a row of dummies behind sandbags. */
+const shootingRange = (ctx: GenContext, lot: Lot, curb: number) => {
+  const { boxes } = ctx;
+  const cx = (lot.x0 + lot.x1) / 2;
+  const nearZ = lot.qz === 0 ? lot.z0 + 3 : lot.z1 - 3; // firing line by the street
+  const farZ = lot.qz === 0 ? lot.z1 - 4 : lot.z0 + 4; // targets at the back
+  const facing = lot.qz === 0 ? Math.PI : 0; // dummies face the firing line
+  // Firing line bench and a backstop wall behind the targets.
+  boxes.push({ p: [cx, curb + 0.5, nearZ], s: [lot.x1 - lot.x0 - 6, 1.0, 0.6], m: 'concrete_barrier' });
+  const backZ = lot.qz === 0 ? lot.z1 - 1.5 : lot.z0 + 1.5;
+  boxes.push({ p: [cx, curb + 1.75, backZ], s: [lot.x1 - lot.x0 - 2, 3.5, 0.6], m: 'sandbag' });
+  for (let i = 0; i < 5; i++) {
+    const x = lot.x0 + 4 + i * ((lot.x1 - lot.x0 - 8) / 4);
+    const z = farZ + (i % 2 === 0 ? 0 : (lot.qz === 0 ? -4 : 4));
+    ctx.dummies.push({ id: ctx.dummies.length, p: [x, curb, z], yaw: facing });
+  }
 };
 
 const vacantLot = (ctx: GenContext, lot: Lot, curb: number) => {

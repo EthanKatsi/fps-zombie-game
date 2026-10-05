@@ -77,6 +77,15 @@ export interface ContainerSpawn {
   buildingId: number | null;
 }
 
+/** A training dummy on the shooting range (hittable, respawns). */
+export interface DummySpawn {
+  id: number;
+  /** Feet position. */
+  p: [number, number, number];
+  /** Facing (yaw). */
+  yaw: number;
+}
+
 export interface MapData {
   id: string;
   seed: number;
@@ -86,6 +95,7 @@ export interface MapData {
   doors: DoorDef[];
   buildings: BuildingInfo[];
   containers: ContainerSpawn[];
+  dummies: DummySpawn[];
   spawnPoints: Vec3[];
 }
 
@@ -126,5 +136,6 @@ export const hashMap = (map: MapData): string => {
     mix(d.hinge[0]); mix(d.hinge[2]); mix(d.yaw);
   }
   mix(map.containers.length);
+  mix(map.dummies.length);
   return (h >>> 0).toString(16).padStart(8, '0');
 };

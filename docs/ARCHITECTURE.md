@@ -96,6 +96,14 @@ sides move the door collider in their physics world, so prediction stays in sync
 - There is one damage entry point, `SurvivalSystem.damage()`. Death drops the inventory into a dynamic `loot_bag`
   container that appears in the world as a ground entity, and the player respawns at an edge spawn after a delay.
 
+## Combat (milestone 5)
+
+- The client sends `attack {seq, dir, aim}`. The server re-derives the origin (its own eye position), the spread
+  (from its own movement state) and the pellets (from the shared seed), then resolves hits against the world and the
+  hitboxes of players and dummies. It applies damage via the survival system and confirms hits to the shooter.
+- The client predicts only the presentation: tracers, recoil, the ammo count, and the swing and reload animations.
+- Viewmodels live in a separate Three.js scene rendered after the world with the depth buffer cleared.
+
 ## Networking model
 
 - **Transport**: Socket.IO over WebSocket only. JSON for now; a binary codec can replace it behind `protocol.ts`.
