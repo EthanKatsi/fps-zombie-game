@@ -265,10 +265,9 @@ Everything is generated in code (no downloaded assets):
   - `Game.aimRay` gives shots and E-interactions an origin at the eye, aimed at the point under the crosshair
     (correct over-the-shoulder aiming). In the facing view it uses your facing direction and hides the crosshair.
   - The rifle scope overlay only appears in first person.
-- **Crouch is Ctrl** (user request).
-  - Ctrl+W (crouch-walk forward) would close the tab. Joining therefore requests fullscreen and the Keyboard Lock API
-    (`main.ts lockKeyboard`); hold Esc to leave fullscreen.
-  - Browsers without keyboard lock get a "leave site?" confirmation while in a game.
+- **Crouch is Shift; sprint is double-tap W and hold** (user request, replacing an earlier Ctrl-crouch that needed
+  fullscreen + keyboard lock to stop Ctrl+W closing the tab - that workaround was removed). `Input.sprintLatched`
+  is set by a second W press within 300 ms and cleared when W is released.
 
 ## Extra: assault rifle (requested after M7)
 

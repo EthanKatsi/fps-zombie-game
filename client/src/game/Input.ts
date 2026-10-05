@@ -20,17 +20,32 @@ export class Input {
   /** Set by the weapon controller each frame: right mouse is aiming down sights right now. */
   aimActive = false;
   onLockChange: (locked: boolean) => void = () => {};
+  /** Double-tap W (then hold) to sprint. */
+  private lastWDown = -Infinity;
+  private sprintLatched = false;
+  private static readonly DOUBLE_TAP_MS = 300;
 
   constructor(private readonly element: HTMLElement) {
     window.addEventListener('keydown', (e) => {
       if (!this.locked) return;
       this.keys.add(e.code);
       if (!e.repeat) this.pressed.add(e.code);
+      if (e.code === 'KeyW' && !e.repeat) {
+        const now = performance.now();
+        if (now - this.lastWDown < Input.DOUBLE_TAP_MS) this.sprintLatched = true;
+        this.lastWDown = now;
+      }
       // Stop browser shortcuts (space scrolling, F-keys, etc.) while playing.
-      if (['Space', 'Tab', 'F8'].includes(e.code) || e.ctrlKey) e.preventDefault();
+      if (['Space', 'Tab', 'F8'].includes(e.code)) e.preventDefault();
     });
-    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('keyup', (e) => {
+      this.keys.delete(e.code);
+      if (e.code === 'KeyW') this.sprintLatched = false; // sprint lasts while W stays held
+    });
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+      this.sprintLatched = false;
+    });
 
     document.addEventListener('mousemove', (e) => {
       if (!this.locked) return;
@@ -120,10 +135,8 @@ export class Input {
     const mx = (this.down('KeyD') ? 1 : 0) - (this.down('KeyA') ? 1 : 0);
     let b = 0;
     if (this.down('Space')) b |= Buttons.jump;
-    if (this.down('ShiftLeft') || this.down('ShiftRight')) b |= Buttons.sprint;
-    // Ctrl crouches. (Ctrl+W would close the tab: the game goes fullscreen with keyboard lock
-    // where supported, and asks before leaving otherwise - see main.ts.)
-    if (this.down('ControlLeft') || this.down('ControlRight')) b |= Buttons.crouch;
+    if (this.sprintLatched && this.down('KeyW')) b |= Buttons.sprint;
+    if (this.down('ShiftLeft') || this.down('ShiftRight')) b |= Buttons.crouch;
     if (this.aimActive) b |= Buttons.aim;
     return { mx, mz, b };
   }

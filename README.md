@@ -25,8 +25,8 @@ Open a second browser window with a different name to see multiplayer.
 |---|---|
 | WASD | Move |
 | Mouse | Look |
-| Shift | Sprint (uses stamina) |
-| Ctrl | Crouch (the game goes fullscreen so Ctrl+W can't close the tab; hold Esc to leave fullscreen) |
+| Double-tap W (hold) | Sprint (uses stamina) |
+| Shift | Crouch |
 | Space | Jump |
 | E | Use: open/close doors, search containers, pick up items |
 | Tab / I | Inventory (drag to move, Ctrl+drag split, right-click quick-move, drag outside to drop) |

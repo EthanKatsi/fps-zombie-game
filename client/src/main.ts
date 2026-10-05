@@ -24,25 +24,6 @@ usernameInput.value = localStorage.getItem('grey.username') ?? '';
 
 let game: Game | null = null;
 
-/**
- * Crouch is on Ctrl, and Ctrl+W (crouch-walk forward) would close the tab. In fullscreen the
- * Keyboard Lock API lets the game receive those keys (hold Esc to leave fullscreen). Browsers
- * without it get a "leave site?" confirmation instead.
- */
-const lockKeyboard = () => {
-  const nav = navigator as Navigator & { keyboard?: { lock?: (keys?: string[]) => Promise<void> } };
-  const keys = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyV', 'Tab', 'Space', 'ControlLeft', 'ControlRight'];
-  document.documentElement
-    .requestFullscreen?.()
-    .then(() => nav.keyboard?.lock?.(keys))
-    .catch(() => {});
-};
-window.addEventListener('beforeunload', (e) => {
-  if (!game) return;
-  e.preventDefault();
-  e.returnValue = '';
-});
-
 const showMenu = (error = '') => {
   game?.dispose();
   game = null;
@@ -81,7 +62,6 @@ form.addEventListener('submit', async (e) => {
       },
     });
     conn.socket.on('disconnect', () => showMenu('Disconnected from server.'));
-    lockKeyboard();
     // Dev-only handle for debugging from the browser console / automation.
     if (import.meta.env.DEV) (window as unknown as { __game: Game }).__game = game;
   } catch (err) {
