@@ -5,7 +5,7 @@ deterministic sim, world gen), `/server` (Node + Socket.IO + Rapier + SQLite, au
 (Vite + Three.js + Rapier).
 
 **Start here:** `docs/PROGRESS.md` (status, what's done, what's next), `docs/SPEC.md` (the owner's original
-requirements plus later changes), `docs/ARCHITECTURE.md` (design).
+requirements plus later changes), `docs/ARCHITECTURE.md` (design), `docs/MODELS.md` (drop-in character models).
 
 ## Commands
 - `npm install`, then `npm run dev` (server :2567 + Vite :5173, `tsx watch` hot-reloads the server)

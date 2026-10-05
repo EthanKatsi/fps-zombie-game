@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LAYERS, LAYER_SCALE, type Layer, type SurfaceTextures } from './textures';
+import { LAYERS, type Layer, type SurfaceTextures } from './textures';
 
 /** Which procedural surface each map material key uses. Unlisted keys use 'plain'. */
 const SURFACE_OF: Record<string, Layer> = {
@@ -36,8 +36,8 @@ export const surfaceIndex = (materialKey: string): number => LAYERS.indexOf(SURF
  */
 export const createWorldMaterial = (tex: SurfaceTextures): THREE.MeshStandardMaterial => {
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 });
-  const scales = LAYERS.map((l) => 1 / LAYER_SCALE[l]);
-  while (scales.length < 16) scales.push(1);
+  // Shared array: photo surfaces update it after loading (real-world texture sizes).
+  const scales = tex.invScale;
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uDetail = { value: tex.detail };
     shader.uniforms.uNormalArr = { value: tex.normal };

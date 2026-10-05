@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { NETWORK, ZOMBIE_TYPES, ZOMBIE_TYPE_ORDER, ZombieAnim, lerp, lerpAngle, type NetZombie, type ZombieType } from '@grey/shared';
-import { Humanoid, type HumanoidLook, type HumanoidStyle } from './anim/Humanoid';
+import { Humanoid, type CharacterBody, type HumanoidLook, type HumanoidStyle } from './anim/Humanoid';
+import type { ModelLibrary } from './models/ModelLibrary';
 
 const mat = (c: number, rough = 0.9) => new THREE.MeshStandardMaterial({ color: c, roughness: rough });
 
@@ -40,14 +41,20 @@ interface Sample {
 }
 
 class ZombieMesh {
-  readonly body: Humanoid;
+  readonly body: CharacterBody;
   private buffer: Sample[] = [];
   private last: { x: number; z: number } | null = null;
   private hits = -1;
 
-  constructor(readonly id: number, readonly type: ZombieType) {
-    this.body = new Humanoid(lookFor(type, id), styleFor(type, id));
-    this.body.root.scale.setScalar(ZOMBIE_TYPES[type].scale);
+  constructor(readonly id: number, readonly type: ZombieType, models: ModelLibrary | null) {
+    const scale = ZOMBIE_TYPES[type].scale;
+    const model = models?.createZombie(id, scale) ?? null;
+    if (model) {
+      this.body = model;
+    } else {
+      this.body = new Humanoid(lookFor(type, id), styleFor(type, id));
+      this.body.root.scale.setScalar(scale);
+    }
   }
 
   get root(): THREE.Group {
@@ -104,7 +111,7 @@ class ZombieMesh {
 export class ZombiesView {
   private readonly zombies = new Map<number, ZombieMesh>();
 
-  constructor(private readonly scene: THREE.Scene) {}
+  constructor(private readonly scene: THREE.Scene, private readonly models: ModelLibrary | null = null) {}
 
   onSnapshot(list: NetZombie[], serverTime: number): void {
     const seen = new Set<number>();
@@ -112,7 +119,7 @@ export class ZombiesView {
       seen.add(n.id);
       let z = this.zombies.get(n.id);
       if (!z) {
-        z = new ZombieMesh(n.id, ZOMBIE_TYPE_ORDER[n.t] ?? 'walker');
+        z = new ZombieMesh(n.id, ZOMBIE_TYPE_ORDER[n.t] ?? 'walker', this.models);
         this.zombies.set(n.id, z);
         this.scene.add(z.root);
       }

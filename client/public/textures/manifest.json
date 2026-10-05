@@ -1,0 +1,156 @@
+{
+  "brick": {
+    "asset": "red_brick_03",
+    "metres": 1.0,
+    "maps": {
+      "diff": "textures/brick_diff.jpg",
+      "nor": "textures/brick_nor.jpg",
+      "rough": "textures/brick_rough.jpg"
+    },
+    "source": "https://polyhaven.com/a/red_brick_03",
+    "license": "CC0"
+  },
+  "concrete": {
+    "asset": "concrete_wall_008",
+    "metres": 2.71,
+    "maps": {
+      "diff": "textures/concrete_diff.jpg",
+      "nor": "textures/concrete_nor.jpg",
+      "rough": "textures/concrete_rough.jpg"
+    },
+    "source": "https://polyhaven.com/a/concrete_wall_008",
+    "license": "CC0"
+  },
+  "asphalt": {
+    "asset": "asphalt_02",
+    "metres": 3.0,
+    "maps": {
+      "diff": "textures/asphalt_diff.jpg",
+      "nor": "textures/asphalt_nor.jpg",
+      "rough": "textures/asphalt_rough.jpg"
+    },
+    "source": "https://polyhaven.com/a/asphalt_02",
+    "license": "CC0"
+  },
+  "wood": {
+    "asset": "brown_planks_03",
+    "metres": 1.0,
+    "maps": {
+      "diff": "textures/wood_diff.jpg",
+      "nor": "textures/wood_nor.jpg",
+      "rough": "textures/wood_rough.jpg"
+    },
+    "source": "https://polyhaven.com/a/brown_planks_03",
+    "license": "CC0"
+  },
+  "siding": {
+    "asset": "weathered_plank_siding",
+    "metres": 1.57,
+    "maps": {
+      "diff": "textures/siding_diff.jpg",
+      "nor": "textures/siding_nor.jpg",
+      "rough": "textures/siding_rough.jpg"
+    },
+    "source": "https://polyhaven.com/a/weathered_plank_siding",
+    "license": "CC0"
+  },
+  "grass": {
+    "asset": "withered_grass",
+    "metres": 2.0,
+    "maps": {
+      "diff": "textures/grass_diff.jpg",
+      "nor": "textures/grass_nor.jpg",
+      "rough": "textures/grass_rough.jpg"
+    },
+    "source": "https://polyhaven.com/a/withered_grass",
+    "license": "CC0"
+  },
+  "tile": {
+    "asset": "dirty_tiles",
+    "metres": 2.26,
+    "maps": {
+      "diff": "textures/tile_diff.jpg",
+      "nor": "textures/tile_nor.jpg",
+      "rough": "textures/tile_rough.jpg"
+    },
+    "source": "https://polyhaven.com/a/dirty_tiles",
+    "license": "CC0"
+  },
+  "plaster": {
+    "asset": "damaged_plaster",
+    "metres": 1.85,
+    "maps": {
+      "diff": "textures/plaster_diff.jpg",
+      "nor": "textures/plaster_nor.jpg",
+      "rough": "textures/plaster_rough.jpg"
+    },
+    "source": "https://polyhaven.com/a/damaged_plaster",
+    "license": "CC0"
+  },
+  "metal": {
+    "asset": "rusty_painted_metal",
+    "metres": 2.2,
+    "maps": {
+      "diff": "textures/metal_diff.jpg",
+      "nor": "textures/metal_nor.jpg",
+      "rough": "textures/metal_rough.jpg"
+    },
+    "source": "https://polyhaven.com/a/rusty_painted_metal",
+    "license": "CC0"
+  },
+  "fabric": {
+    "asset": "denim_fabric",
+    "metres": 0.1,
+    "maps": {
+      "diff": "textures/fabric_diff.jpg",
+      "nor": "textures/fabric_nor.jpg",
+      "rough": "textures/fabric_rough.jpg"
+    },
+    "source": "https://polyhaven.com/a/denim_fabric",
+    "license": "CC0"
+  },
+  "roof": {
+    "asset": "gravel",
+    "metres": 2.0,
+    "maps": {
+      "diff": "textures/roof_diff.jpg",
+      "nor": "textures/roof_nor.jpg",
+      "rough": "textures/roof_rough.jpg"
+    },
+    "source": "https://polyhaven.com/a/gravel",
+    "license": "CC0"
+  },
+  "sidewalk": {
+    "asset": "concrete_tiles",
+    "metres": 1.85,
+    "maps": {
+      "diff": "textures/sidewalk_diff.jpg",
+      "nor": "textures/sidewalk_nor.jpg",
+      "rough": "textures/sidewalk_rough.jpg"
+    },
+    "source": "https://polyhaven.com/a/concrete_tiles",
+    "license": "CC0"
+  },
+  "bark": {
+    "asset": "bark_brown_01",
+    "metres": 1.0,
+    "maps": {
+      "diff": "textures/bark_diff.jpg",
+      "nor": "textures/bark_nor.jpg",
+      "rough": "textures/bark_rough.jpg"
+    },
+    "source": "https://polyhaven.com/a/bark_brown_01",
+    "license": "CC0"
+  },
+  "leaves": {
+    "asset": "forest_leaves_02",
+    "metres": 3.0,
+    "maps": {
+      "diff": "textures/leaves_diff.jpg",
+      "nor": "textures/leaves_nor.jpg",
+      "rough": "textures/leaves_rough.jpg"
+    },
+    "source": "https://polyhaven.com/a/forest_leaves_02",
+    "license": "CC0"
+  }
+}

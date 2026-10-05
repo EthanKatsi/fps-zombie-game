@@ -269,6 +269,29 @@ Everything is generated in code (no downloaded assets):
   fullscreen + keyboard lock to stop Ctrl+W closing the tab - that workaround was removed). `Input.sprintLatched`
   is set by a second W press within 300 ms and cleared when W is released.
 
+## Extra: settings, photo textures, drop-in character models (requested after M7)
+
+- **Settings** (`client/src/settings.ts`, localStorage `grey.settings`): Menu → Settings and the pause screen (Esc).
+  - Graphics quality: High (AO + bloom), Medium, Low (no post-processing), Performance (no shadows, lower resolution).
+  - Mouse sensitivity and field of view. F8 still cycles the quality.
+- **Photo textures**: 14 CC0 Poly Haven 1K sets live in `client/public/textures/` (diffuse/normal/roughness plus
+  `manifest.json`). `render/textures.ts loadPhotoSurfaces` blits them into the existing texture-array layers after
+  start-up, so the procedural textures show first and swap out within about 2 s. The albedo is divided by the
+  photo's average colour, so map material colours still tint it. `invScale` follows the photo's real size in metres.
+- **Character models** (`client/src/game/models/ModelLibrary.ts`, user guide in `docs/MODELS.md`):
+  - Realistic zombie and player models are CC-BY or Mixamo, which need an account, so the **user downloads them**
+    into `client/public/models/`. That folder is gitignored except `manifest.example.json`.
+  - With no `manifest.json` there, everything falls back to the procedural `Humanoid`.
+  - `ModelRig` implements the same `CharacterBody` interface as `Humanoid`, using AnimationMixer clips:
+    - idle, walk and run, with playback synced to speed;
+    - attack, hit and death;
+    - crouch, falling back to walk and idle;
+    - a topple if there's no death clip.
+  - Root motion is stripped. The hand anchor follows the hand bone's position in metre space, so held items keep
+    their size.
+  - Verified with the three.js example `Soldier.glb` as both zombie and player, then removed.
+- **Menu → Credits** lists the model `credit` strings (required for CC-BY) and the Poly Haven texture names.
+
 ## Extra: assault rifle (requested after M7)
 
 - An `assault_rifle` item plus weapon. It's the first **full-auto** weapon (`WeaponDef.automatic`: hold to fire):

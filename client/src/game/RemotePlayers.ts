@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ITEM_CATEGORY_COLORS, MOVEMENT, NETWORK, PlayerFlags, getItemDef, lerp, lerpAngle, type NetPlayer } from '@grey/shared';
-import { Humanoid, type HumanoidLook } from './anim/Humanoid';
+import { Humanoid, type CharacterBody, type HumanoidLook } from './anim/Humanoid';
+import type { ModelLibrary } from './models/ModelLibrary';
 
 interface Sample {
   t: number;
@@ -70,7 +71,7 @@ const makeNameTag = (name: string): THREE.Sprite => {
 
 class RemotePlayer {
   readonly root = new THREE.Group();
-  private readonly body: Humanoid;
+  private readonly body: CharacterBody;
   private readonly ownMaterials: THREE.Material[];
   private readonly tag: THREE.Sprite;
   private buffer: Sample[] = [];
@@ -83,10 +84,10 @@ class RemotePlayer {
   private last: { x: number; z: number } | null = null;
   private hits = -1;
 
-  constructor(readonly id: string, name: string) {
+  constructor(readonly id: string, name: string, models: ModelLibrary | null) {
     const look = lookForPlayer(id);
     this.ownMaterials = [look.skin, look.shirt, look.pants, look.shoes];
-    this.body = new Humanoid(look, { zombie: false, limp: 0, hunch: 0, reach: 0, flail: false });
+    this.body = models?.createPlayer() ?? new Humanoid(look, { zombie: false, limp: 0, hunch: 0, reach: 0, flail: false });
     this.root.add(this.body.root);
     this.tag = makeNameTag(name);
     this.root.add(this.tag);
@@ -207,7 +208,7 @@ class RemotePlayer {
  */
 export class LocalAvatar {
   readonly root = new THREE.Group();
-  private readonly body: Humanoid;
+  private readonly body: CharacterBody;
   private readonly hand = new THREE.Group();
   private heldId = '';
   private heldMesh: THREE.Object3D | null = null;
@@ -215,8 +216,8 @@ export class LocalAvatar {
   private crouchBlend = 0;
   private last: { x: number; z: number } | null = null;
 
-  constructor(id: string) {
-    this.body = new Humanoid(lookForPlayer(id), { zombie: false, limp: 0, hunch: 0, reach: 0, flail: false });
+  constructor(id: string, models: ModelLibrary | null = null) {
+    this.body = models?.createPlayer() ?? new Humanoid(lookForPlayer(id), { zombie: false, limp: 0, hunch: 0, reach: 0, flail: false });
     this.root.add(this.body.root);
     this.hand.position.set(0.18, 1.3, -0.3);
     this.root.add(this.hand);
@@ -281,7 +282,11 @@ export class RemotePlayers {
   private readonly players = new Map<string, RemotePlayer>();
   private readonly names = new Map<string, string>();
 
-  constructor(private readonly scene: THREE.Scene, private readonly localId: string) {}
+  constructor(
+    private readonly scene: THREE.Scene,
+    private readonly localId: string,
+    private readonly models: ModelLibrary | null = null,
+  ) {}
 
   setName(id: string, name: string): void {
     this.names.set(id, name);
@@ -308,7 +313,7 @@ export class RemotePlayers {
       seen.add(n.id);
       let p = this.players.get(n.id);
       if (!p) {
-        p = new RemotePlayer(n.id, this.names.get(n.id) ?? '???');
+        p = new RemotePlayer(n.id, this.names.get(n.id) ?? '???', this.models);
         this.players.set(n.id, p);
         this.scene.add(p.root);
       }

@@ -1,0 +1,31 @@
+{
+  "zombies": [
+    {
+      "model": "models/zombie1/idle.fbx",
+      "animations": {
+        "walk": "models/zombie1/walk.fbx",
+        "run": "models/zombie1/run.fbx",
+        "attack": "models/zombie1/attack.fbx",
+        "death": "models/zombie1/death.fbx",
+        "hit": "models/zombie1/hit.fbx"
+      },
+      "walkSpeed": 0.9,
+      "credit": "Zombie: Mixamo (Adobe)"
+    },
+    {
+      "model": "models/zombie2/scene.gltf",
+      "credit": "\"Zombie (Rigged & Animated)\" by Aiden Studios, CC-BY-4.0, via Sketchfab"
+    }
+  ],
+  "player": {
+    "model": "models/player/idle.fbx",
+    "animations": {
+      "walk": "models/player/walk.fbx",
+      "run": "models/player/run.fbx",
+      "crouch": "models/player/crouch.fbx",
+      "crouchWalk": "models/player/crouch_walk.fbx",
+      "death": "models/player/death.fbx"
+    },
+    "credit": "Player: Mixamo (Adobe)"
+  }
+}

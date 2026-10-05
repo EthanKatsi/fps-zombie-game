@@ -39,10 +39,11 @@ import { DummiesView } from './DummiesView';
 import { ZombiesView } from './ZombiesView';
 import { Viewmodel } from './weapons/Viewmodel';
 import { WeaponController } from './weapons/WeaponController';
+import type { ModelLibrary } from './models/ModelLibrary';
 import { Atmosphere } from '../render/atmosphere';
 import { PostFX } from '../render/postfx';
 import { QUALITY_LABELS, QUALITY_ORDER, getSettings, onSettingsChange, updateSettings, type GraphicsQuality, type Settings } from '../settings';
-import { generateSurfaceTextures } from '../render/textures';
+import { generateSurfaceTextures, loadPhotoSurfaces } from '../render/textures';
 import { createWorldMaterial } from '../render/worldMaterial';
 
 const SHADOW_SIZE: Record<GraphicsQuality, number> = { high: 4096, medium: 2048, low: 1024, performance: 1024 };
@@ -130,6 +131,7 @@ export class Game {
     join: JoinAccepted,
     container: HTMLElement,
     private readonly ui: GameUi,
+    models: ModelLibrary | null = null,
   ) {
     // --- renderer / scene ---
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -156,6 +158,8 @@ export class Game {
     const surfaces = generateSurfaceTextures(this.renderer);
     console.info(`[gfx] surface textures generated in ${Math.round(performance.now() - tTex)} ms`);
     const worldMat = createWorldMaterial(surfaces);
+    // Photo-scanned CC0 textures replace the procedural ones as they finish loading.
+    void loadPhotoSurfaces(this.renderer, surfaces).then((n) => n && console.info(`[gfx] ${n} photo surfaces loaded`));
 
     // --- world: regenerate the same map + colliders as the server ---
     this.map = loadMap(join.mapId, join.mapSeed);
@@ -181,7 +185,7 @@ export class Game {
     this.groundItems = new GroundItemsView(this.scene);
     this.effects = new Effects(this.scene);
     this.dummies = new DummiesView(this.scene, this.map.dummies, join.dummiesDown);
-    this.zombies = new ZombiesView(this.scene);
+    this.zombies = new ZombiesView(this.scene, models);
     this.killFeed = new KillFeed(join.username);
     this.viewmodel.setAspect(window.innerWidth / window.innerHeight);
 
@@ -204,10 +208,10 @@ export class Game {
     // Unlocking the mouse for the inventory screen is not a pause.
     this.input.onLockChange = (locked) => this.ui.setPaused(!locked && !this.inventoryUI.isOpen && !this.dead);
     this.local = new LocalPlayer(R, this.world, join.state, this.input);
-    this.remotes = new RemotePlayers(this.scene, join.playerId);
+    this.remotes = new RemotePlayers(this.scene, join.playerId, models);
     for (const p of join.players) this.remotes.setName(p.id, p.username);
     this.online = join.players.length;
-    this.avatar = new LocalAvatar(join.playerId);
+    this.avatar = new LocalAvatar(join.playerId, models);
     this.scene.add(this.avatar.root);
     this.weapons = new WeaponController({
       R,

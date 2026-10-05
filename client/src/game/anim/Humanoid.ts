@@ -56,6 +56,14 @@ const GEO = {
 const DARK = new THREE.MeshStandardMaterial({ color: 0x120d0b, roughness: 1 });
 const HAIR = [0x2a2018, 0x4a3a28, 0x15120f, 0x6b5a45, 0x3a3a38].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.95 }));
 
+/** What views need from a character body: procedural Humanoid or a loaded ModelRig. */
+export interface CharacterBody {
+  readonly root: THREE.Group;
+  readonly rightHand: THREE.Object3D;
+  update(a: AnimInput): void;
+  hit(): void;
+}
+
 /** Critically-damped spring towards a target (smooth, no overshoot). */
 const approach = (cur: number, target: number, rate: number, dt: number) => cur + (target - cur) * (1 - Math.exp(-rate * dt));
 
@@ -64,7 +72,7 @@ const approach = (cur: number, target: number, rate: number, dt: number) => cur 
  * driven by distance travelled, so feet don't slide; hips bob and sway, the torso
  * counter-rotates, arms swing opposite the legs, knees bend through the swing phase.
  */
-export class Humanoid {
+export class Humanoid implements CharacterBody {
   readonly root = new THREE.Group();
   /** Anchor in the right hand for held items (points forward along -Z). */
   readonly rightHand = new THREE.Group();

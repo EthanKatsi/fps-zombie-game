@@ -7,3 +7,6 @@ server/data/*.db-*
 .DS_Store
 server/data/admin-token.txt
 server/data/*.bin
+# Downloaded character models (see docs/MODELS.md); only the example manifest is tracked.
+client/public/models/*
+!client/public/models/manifest.example.json

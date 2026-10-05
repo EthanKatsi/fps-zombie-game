@@ -36,7 +36,7 @@ Open a second browser window with a different name to see multiplayer.
 | Right click (hold) | Aim down sights (guns) |
 | R | Reload |
 | V | Camera: first person → third person → facing view → first person |
-| F8 | Cycle graphics quality (High / Medium / Low) |
+| F8 | Cycle graphics quality (High / Medium / Low / Performance); also in Menu → Settings and the Esc pause screen |
 | Esc | Release mouse / pause |
 
 ## Other commands
@@ -57,3 +57,9 @@ Server settings (port, DB path, map id/seed, offline raid protection) live in `s
 overridden with environment variables (`PORT`, `DB_PATH`, `MAP_ID`, `MAP_SEED`, `OFFLINE_RAID_PROTECTION`, ...).
 Use `MAP_ID=testmap` for the small milestone-1 test lot.
 The SQLite database is `server/data/game.db`; delete it to wipe all players.
+
+## Realistic character models (optional)
+
+Drop rigged, animated zombie and player models (Mixamo FBX or Sketchfab glTF) into `client/public/models/` and
+list them in `manifest.json`. See [docs/MODELS.md](docs/MODELS.md) for step-by-step instructions. Without them the
+game uses its built-in procedural characters. Surface textures are CC0 from Poly Haven (see Menu → Credits).

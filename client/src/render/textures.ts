@@ -212,6 +212,11 @@ const normalMaterial = (heights: THREE.Texture) =>
 export interface SurfaceTextures {
   detail: THREE.Texture;
   normal: THREE.Texture;
+  /** The render targets behind the textures (photo surfaces are blitted into their layers). */
+  detailTarget: THREE.WebGLArrayRenderTarget;
+  normalTarget: THREE.WebGLArrayRenderTarget;
+  /** 1 / metres per repeat, per layer (shared with the world material; photos update it). */
+  invScale: number[];
 }
 
 /** Render every layer into two array textures on the GPU (~0.3 s incl. shader compiles). */
@@ -260,5 +265,111 @@ export const generateSurfaceTextures = (renderer: THREE.WebGLRenderer): SurfaceT
   renderer.autoClear = prevAutoClear;
   quad.geometry.dispose();
   heights.dispose();
-  return { detail: detail.texture, normal: normals.texture };
+  const invScale = LAYERS.map((l) => 1 / LAYER_SCALE[l]);
+  while (invScale.length < 16) invScale.push(1);
+  return { detail: detail.texture, normal: normals.texture, detailTarget: detail, normalTarget: normals, invScale };
+};
+
+// ------------------------------------------------------------------ photo surfaces (CC0, Poly Haven)
+
+interface PhotoManifest {
+  [layer: string]: { asset: string; metres: number; maps: { diff?: string; nor?: string; rough?: string }; source: string; license: string };
+}
+
+/** Albedo photo -> colour multiplier normalised by the photo's own average colour (from its 1x1 mip). */
+const photoDetailMaterial = (diff: THREE.Texture) =>
+  new THREE.ShaderMaterial({
+    glslVersion: THREE.GLSL3,
+    uniforms: { uDiff: { value: diff }, uMaxLod: { value: 10 } },
+    vertexShader: VERT,
+    fragmentShader: /* glsl */ `
+      precision highp float;
+      uniform sampler2D uDiff;
+      uniform float uMaxLod;
+      in vec2 vUv;
+      out vec4 outColor;
+      vec3 toLinear(vec3 c) { return pow(c, vec3(2.2)); }
+      void main() {
+        vec3 c = toLinear(texture(uDiff, vUv).rgb);
+        vec3 avg = max(toLinear(textureLod(uDiff, vec2(0.5), uMaxLod).rgb), vec3(0.02));
+        outColor = vec4(clamp((c / avg) * (160.0 / 255.0), 0.0, 1.0), 0.0);
+      }`,
+    depthTest: false,
+    depthWrite: false,
+  });
+
+const photoNormalMaterial = (nor: THREE.Texture, rough: THREE.Texture | null) =>
+  new THREE.ShaderMaterial({
+    glslVersion: THREE.GLSL3,
+    uniforms: { uNor: { value: nor }, uRough: { value: rough }, uHasRough: { value: rough ? 1 : 0 } },
+    vertexShader: VERT,
+    fragmentShader: /* glsl */ `
+      precision highp float;
+      uniform sampler2D uNor;
+      uniform sampler2D uRough;
+      uniform int uHasRough;
+      in vec2 vUv;
+      out vec4 outColor;
+      void main() {
+        vec3 n = texture(uNor, vUv).rgb;
+        float r = uHasRough == 1 ? texture(uRough, vUv).r : 0.6;
+        outColor = vec4(n, r);
+      }`,
+    depthTest: false,
+    depthWrite: false,
+  });
+
+/**
+ * Replace procedural layers with downloaded photo textures (public/textures/manifest.json).
+ * Runs after the game has started; layers swap in as they finish loading. Missing files are
+ * simply skipped (the procedural layer stays).
+ */
+export const loadPhotoSurfaces = async (renderer: THREE.WebGLRenderer, surf: SurfaceTextures): Promise<number> => {
+  let manifest: PhotoManifest;
+  try {
+    const res = await fetch('textures/manifest.json');
+    if (!res.ok) return 0;
+    manifest = (await res.json()) as PhotoManifest;
+  } catch {
+    return 0;
+  }
+  const loader = new THREE.TextureLoader();
+  const load = (url?: string) => (url ? loader.loadAsync(url).catch(() => null) : Promise.resolve(null));
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
+  quad.frustumCulled = false;
+  const scene = new THREE.Scene();
+  scene.add(quad);
+  const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  let applied = 0;
+  for (const [layer, entry] of Object.entries(manifest)) {
+    const index = LAYERS.indexOf(layer as Layer);
+    if (index < 0) continue;
+    const [diff, nor, rough] = await Promise.all([load(entry.maps.diff), load(entry.maps.nor), load(entry.maps.rough)]);
+    if (!diff || !nor) continue;
+    for (const t of [diff, nor, rough]) {
+      if (!t) continue;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.generateMipmaps = true;
+      t.minFilter = THREE.LinearMipmapLinearFilter;
+    }
+    const prev = renderer.getRenderTarget();
+    const dm = photoDetailMaterial(diff);
+    dm.uniforms.uMaxLod.value = Math.floor(Math.log2(Math.max(diff.image.width, diff.image.height)));
+    quad.material = dm;
+    renderer.setRenderTarget(surf.detailTarget, index);
+    renderer.render(scene, cam);
+    const nm = photoNormalMaterial(nor, rough);
+    quad.material = nm;
+    renderer.setRenderTarget(surf.normalTarget, index);
+    renderer.render(scene, cam);
+    renderer.setRenderTarget(prev);
+    dm.dispose();
+    nm.dispose();
+    for (const t of [diff, nor, rough]) t?.dispose();
+    // Real-world size of the photo (metres per repeat).
+    if (entry.metres > 0) surf.invScale[index] = 1 / entry.metres;
+    applied++;
+  }
+  quad.geometry.dispose();
+  return applied;
 };
