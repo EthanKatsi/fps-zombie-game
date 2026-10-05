@@ -1,6 +1,7 @@
 import { Buttons, clamp } from '@grey/shared';
 
 const PITCH_LIMIT = Math.PI / 2 - 0.01;
+const MAX_EVENT_DELTA = 350;
 
 /** Keyboard + pointer-lock mouse input. Yaw/pitch update immediately for responsive aiming. */
 export class Input {
@@ -10,6 +11,7 @@ export class Input {
   /** Radians per pixel of mouse movement. */
   sensitivity = 0.0022;
   locked = false;
+  private skipNextMove = false;
   onLockChange: (locked: boolean) => void = () => {};
 
   constructor(private readonly element: HTMLElement) {
@@ -24,21 +26,41 @@ export class Input {
 
     document.addEventListener('mousemove', (e) => {
       if (!this.locked) return;
-      this.yaw -= e.movementX * this.sensitivity;
-      this.pitch = clamp(this.pitch - e.movementY * this.sensitivity, -PITCH_LIMIT, PITCH_LIMIT);
+      // The first event after locking often carries the whole cursor jump to the lock point.
+      if (this.skipNextMove) {
+        this.skipNextMove = false;
+        return;
+      }
+      const dx = e.movementX;
+      const dy = e.movementY;
+      // Chrome on Windows occasionally reports a single bogus huge delta under pointer lock,
+      // which snaps the view. Real flicks at 1000 Hz polling never get near this size.
+      if (Math.abs(dx) > MAX_EVENT_DELTA || Math.abs(dy) > MAX_EVENT_DELTA) return;
+      this.yaw -= dx * this.sensitivity;
+      this.pitch = clamp(this.pitch - dy * this.sensitivity, -PITCH_LIMIT, PITCH_LIMIT);
     });
 
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === this.element;
+      this.skipNextMove = this.locked;
       if (!this.locked) this.keys.clear();
       this.onLockChange(this.locked);
     });
   }
 
   requestLock(): void {
-    // Chrome returns a promise and rejects if the user just pressed Esc; ignore that.
-    const p = this.element.requestPointerLock() as unknown as Promise<void> | undefined;
-    p?.catch?.(() => {});
+    // Prefer raw (unaccelerated) mouse input: steadier aim and avoids most delta spikes.
+    // Browsers without support reject, so fall back to a plain lock. Chrome also rejects
+    // right after the user pressed Esc; that's fine to ignore.
+    const plain = () => (this.element.requestPointerLock() as Promise<void> | undefined)?.catch?.(() => {});
+    try {
+      const p = this.element.requestPointerLock({ unadjustedMovement: true }) as Promise<void> | undefined;
+      p?.catch?.((err: DOMException) => {
+        if (err?.name === 'NotSupportedError') plain();
+      });
+    } catch {
+      plain();
+    }
   }
 
   private down(code: string): boolean {
