@@ -10,7 +10,7 @@ Original requirements: [SPEC.md](SPEC.md). Design: [ARCHITECTURE.md](ARCHITECTUR
 | 1 | Monorepo, physics FPS controller, multiplayer | ✅ Done | `df3293b` (+ mouse fix `63370cd`) |
 | 2 | City generation, buildings, doors, stairs, performance | ✅ Done | `5a8abfe` |
 | 3 | Inventory, looting containers, item pickup/drop | ✅ Done | `8e67c76` |
-| 4 | Survival stats, death, respawn | ✅ Done | see `git log` |
+| 4 | Survival stats, death, respawn | ✅ Done | `72da7a7` |
 | 5 | Weapons & FPS combat with viewmodels | ⏳ Next | |
 | 6 | Zombies (navmesh AI, noise/vision, combat) | | |
 | 7 | PvP, lag-compensated hits, death loot bags, kill feed | | |
