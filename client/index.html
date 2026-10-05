@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Grey Season</title>
+  </head>
+  <body>
+    <div id="game"></div>
+
+    <div id="ui">
+      <!-- Main menu -->
+      <section id="menu" class="screen">
+        <div class="menu-card">
+          <h1>GREY SEASON</h1>
+          <p class="tagline">Calder Point fell in eleven days. You're still here.</p>
+          <form id="login-form" autocomplete="off">
+            <label for="username">Survivor name</label>
+            <input id="username" maxlength="16" placeholder="3-16 letters, numbers, _ -" required />
+            <button type="submit" id="join-btn">Enter the city</button>
+          </form>
+          <p id="menu-error" class="error"></p>
+          <p class="hint">WASD move · Mouse look · Shift sprint · C crouch · Space jump · Esc pause</p>
+        </div>
+      </section>
+
+      <!-- In-game HUD -->
+      <section id="hud" class="hidden">
+        <div id="crosshair"></div>
+        <div id="stats">
+          <div class="bar"><span class="label">STA</span><div class="track"><div id="stamina-fill" class="fill stamina"></div></div></div>
+        </div>
+        <pre id="debug"></pre>
+      </section>
+
+      <!-- Pause / click-to-play overlay -->
+      <section id="pause" class="screen hidden">
+        <div class="menu-card">
+          <h2>PAUSED</h2>
+          <p>Click to resume</p>
+        </div>
+      </section>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
