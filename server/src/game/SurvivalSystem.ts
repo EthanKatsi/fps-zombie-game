@@ -107,6 +107,7 @@ export class SurvivalSystem {
     const s = p.record.stats;
     s.health = Math.max(0, s.health - amount);
     if (!quiet) {
+      p.hitCount = (p.hitCount + 1) & 255;
       p.socket.emit('damaged', {
         amount: Math.round(amount),
         cause,

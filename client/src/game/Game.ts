@@ -105,6 +105,7 @@ export class Game {
   private readonly killFeed: KillFeed;
   private dead = false;
   private readonly tmpV = new THREE.Vector3();
+  private lastLook = { yaw: 0, pitch: 0 };
   private readonly rayDir = new THREE.Vector3();
   private target: Target = null;
   private mapMismatch = false;
@@ -314,7 +315,18 @@ export class Game {
     window.addEventListener('resize', this.onResize);
     this.renderer.domElement.addEventListener('click', () => this.input.requestLock());
     this.input.requestLock();
-    requestAnimationFrame(this.frame);
+    // Compile shaders in the background (KHR_parallel_shader_compile) before the first frame,
+    // so joining doesn't freeze while the GPU driver compiles everything.
+    this.ui.toast('Preparing graphics...');
+    const tShaders = performance.now();
+    this.renderer
+      .compileAsync(this.scene, this.camera)
+      .catch(() => {})
+      .finally(() => {
+        console.info(`[gfx] shaders ready in ${Math.round(performance.now() - tShaders)} ms`);
+        this.lastFrame = performance.now();
+        requestAnimationFrame(this.frame);
+      });
   }
 
   private openInventory(): void {
@@ -430,7 +442,17 @@ export class Game {
     this.postfx.render(dt);
     const v = this.local.state.vel;
     this.viewmodel.visible = !this.dead && !this.scoped;
-    this.viewmodel.update(dt, Math.hypot(v.x, v.z), this.weapons.aiming);
+    const look = { dyaw: this.input.yaw - this.lastLook.yaw, dpitch: this.input.pitch - this.lastLook.pitch };
+    this.lastLook = { yaw: this.input.yaw, pitch: this.input.pitch };
+    this.viewmodel.update(
+      dt,
+      this.local.state.grounded ? Math.hypot(v.x, v.z) : 0,
+      this.weapons.aiming,
+      look,
+      this.local.stepPhase,
+      this.local.state.sprinting,
+      this.local.landDip,
+    );
     this.renderer.clearDepth();
     this.renderer.render(this.viewmodel.scene, this.viewmodel.camera);
 

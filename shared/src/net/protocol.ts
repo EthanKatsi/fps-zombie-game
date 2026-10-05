@@ -5,7 +5,7 @@ import type { SurvivalStats } from '../types/player';
 import type { MoveInput, MoveState } from '../sim/movement';
 
 /** Bump when the wire format changes; server rejects mismatched clients. */
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 
 // ---------- Client -> Server ----------
 
@@ -26,6 +26,8 @@ export interface NetPlayer {
   f: number;
   /** Item def id held in the active hotbar slot ('' = empty hands). */
   h: string;
+  /** Times this player has been hurt (mod 256): clients play a flinch when it changes. */
+  hc: number;
 }
 
 export const PlayerFlags = {
@@ -159,6 +161,8 @@ export interface NetZombie {
   yaw: number;
   /** ZombieAnim value. */
   s: number;
+  /** Times this zombie has been hit (mod 256): clients play a flinch when it changes. */
+  hc: number;
 }
 
 export interface Snapshot {

@@ -369,6 +369,7 @@ export class GameServer {
           (s.grounded ? PlayerFlags.grounded : 0) |
           (s.sprinting ? PlayerFlags.sprinting : 0),
         h: p.inventory.slots[p.inventory.activeHotbar]?.defId ?? '',
+        hc: p.hitCount,
       });
     }
 

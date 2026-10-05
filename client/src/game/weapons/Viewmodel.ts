@@ -135,6 +135,12 @@ export class Viewmodel {
   private reload: { t: number; duration: number } | null = null;
   private use: { t: number; duration: number } | null = null;
   private ads = 0;
+  /** Spring-damped weapon sway (lags behind mouse look). */
+  private swayX = 0;
+  private swayY = 0;
+  private swayVX = 0;
+  private swayVY = 0;
+  private sprint = 0;
   visible = true;
 
   constructor() {
@@ -208,7 +214,22 @@ export class Viewmodel {
     return this.model.kind === 'gun';
   }
 
-  update(dt: number, speed: number, aiming: boolean): void {
+  /**
+   * @param speed horizontal speed (m/s)
+   * @param look  view rotation this frame (yaw, pitch deltas in radians) for sway
+   * @param stepPhase footstep phase from LocalPlayer (bob synced to steps)
+   * @param sprinting running pose
+   * @param landDip 0..1 landing impulse
+   */
+  update(
+    dt: number,
+    speed: number,
+    aiming: boolean,
+    look: { dyaw: number; dpitch: number } = { dyaw: 0, dpitch: 0 },
+    stepPhase = this.time * 9,
+    sprinting = false,
+    landDip = 0,
+  ): void {
     this.time += dt;
     this.equipT = Math.min(1, this.equipT + dt / 0.3);
     this.kick = Math.max(0, this.kick - dt * 8);
@@ -221,17 +242,53 @@ export class Viewmodel {
     const pos = hip.clone().lerp(adsPos, this.ads);
     const rot = new THREE.Euler(0, 0, 0, 'YXZ');
 
-    // Walk bob (reduced while aiming).
-    const bobAmt = Math.min(1, speed / 4.2) * (1 - this.ads * 0.85);
-    pos.x += Math.sin(this.time * 9) * 0.012 * bobAmt;
-    pos.y += Math.abs(Math.cos(this.time * 9)) * 0.016 * bobAmt;
+    // Sway: the weapon lags behind fast turns, then springs back (less when aiming).
+    const swayGain = 1 - this.ads * 0.75;
+    const k = 120, damp = 14;
+    const tx = THREE.MathUtils.clamp(-look.dyaw * 1.6, -0.08, 0.08) * swayGain;
+    const ty = THREE.MathUtils.clamp(look.dpitch * 1.6, -0.08, 0.08) * swayGain;
+    this.swayVX += ((tx - this.swayX) * k - this.swayVX * damp) * dt;
+    this.swayVY += ((ty - this.swayY) * k - this.swayVY * damp) * dt;
+    this.swayX += this.swayVX * dt;
+    this.swayY += this.swayVY * dt;
+    pos.x += this.swayX * 0.5;
+    pos.y += this.swayY * 0.5;
+    rot.y += this.swayX * 1.2;
+    rot.x += this.swayY * 1.2;
+    rot.z += this.swayX * 1.5;
+
+    // Footstep bob: a figure-eight synced to the actual steps (reduced while aiming).
+    const bobAmt = Math.min(1, speed / 4.2) * (1 - this.ads * 0.85) * (1 + this.sprint * 0.6);
+    pos.x += Math.sin(stepPhase) * 0.014 * bobAmt;
+    pos.y += -Math.abs(Math.cos(stepPhase)) * 0.018 * bobAmt;
+    rot.z += Math.sin(stepPhase) * 0.02 * bobAmt;
+
+    // Idle breathing.
+    const breathe = (1 - Math.min(1, speed / 2)) * (1 - this.ads * 0.8);
+    pos.y += Math.sin(this.time * 1.7) * 0.004 * breathe;
+    rot.x += Math.sin(this.time * 1.7 + 0.6) * 0.008 * breathe;
+
+    // Landing dip.
+    pos.y -= Math.sin(Math.min(1, landDip) * Math.PI) * 0.06;
 
     // Raise on equip.
     const e = 1 - this.equipT;
     pos.y -= e * e * 0.35;
     rot.x -= e * 0.6;
 
-    if (melee) rot.set(0.25, -0.15, -0.35, 'YXZ');
+    if (melee) rot.set(rot.x + 0.25, rot.y - 0.15, rot.z - 0.35, 'YXZ');
+
+    // Sprint pose: guns tilted down and across the body, melee weapons raised.
+    this.sprint += ((sprinting && !aiming ? 1 : 0) - this.sprint) * (1 - Math.exp(-dt * 8));
+    if (this.model.kind === 'gun') {
+      rot.y += this.sprint * 0.75;
+      rot.x -= this.sprint * 0.35;
+      pos.x -= this.sprint * 0.06;
+      pos.y -= this.sprint * 0.05;
+    } else {
+      rot.x += this.sprint * 0.25;
+      pos.y += this.sprint * 0.03;
+    }
 
     // Fire kick.
     pos.z += this.kick * 0.07;

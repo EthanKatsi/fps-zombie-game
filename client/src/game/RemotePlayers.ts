@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ITEM_CATEGORY_COLORS, MOVEMENT, NETWORK, PlayerFlags, getItemDef, lerp, lerpAngle, type NetPlayer } from '@grey/shared';
+import { Humanoid, type HumanoidLook } from './anim/Humanoid';
 
 interface Sample {
   t: number;
@@ -11,19 +12,29 @@ interface Sample {
   crouch: boolean;
 }
 
-const BODY_COLOR = 0x5b5e4a;
+/** Survivor outfits: varied per player id so people are recognisable at a glance. */
+const JACKETS = [0x4b5135, 0x5a4632, 0x2f3a4a, 0x55524a, 0x6b2f27, 0x3c4a3f];
+const PANTS = [0x2c3a52, 0x5a5242, 0x2f2f2f, 0x47402f];
+const SKINS = [0xc69c7d, 0xa77b5a, 0x8a5d3e, 0xe0b899, 0x6e4a32];
+const pickFor = (list: number[], id: string, salt: number) => {
+  let h = salt;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+  return list[(h >>> 0) % list.length];
+};
+const mat = (c: number, rough = 0.85) => new THREE.MeshStandardMaterial({ color: c, roughness: rough });
 
 /** Third-person held item: a rough shape per category. */
 const makeHeld = (defId: string): THREE.Object3D | null => {
   const def = getItemDef(defId);
   if (!def) return null;
   const color = new THREE.Color(ITEM_CATEGORY_COLORS[def.category]);
-  const mat = new THREE.MeshStandardMaterial({ color: def.category === 'ranged' ? 0x2b2e31 : color, roughness: 0.6 });
+  const ranged = def.category === 'ranged';
+  const m = new THREE.MeshStandardMaterial({ color: ranged ? 0x2b2e31 : color, roughness: 0.6, metalness: ranged ? 0.5 : 0 });
   let geo: THREE.BufferGeometry;
-  if (def.category === 'ranged') geo = new THREE.BoxGeometry(0.06, 0.09, defId === 'pistol' ? 0.22 : 0.75);
+  if (ranged) geo = new THREE.BoxGeometry(0.06, 0.09, defId === 'pistol' ? 0.22 : 0.75);
   else if (def.category === 'melee') geo = new THREE.BoxGeometry(0.05, 0.05, 0.7);
   else geo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
-  const mesh = new THREE.Mesh(geo, mat);
+  const mesh = new THREE.Mesh(geo, m);
   mesh.castShadow = true;
   return mesh;
 };
@@ -50,42 +61,33 @@ const makeNameTag = (name: string): THREE.Sprite => {
 
 class RemotePlayer {
   readonly root = new THREE.Group();
-  private readonly body: THREE.Mesh;
-  private readonly head: THREE.Group;
+  private readonly body: Humanoid;
+  private readonly ownMaterials: THREE.Material[];
   private readonly tag: THREE.Sprite;
   private buffer: Sample[] = [];
   private crouchBlend = 0;
-  /** Right-hand anchor for the held item (follows head pitch a little). */
+  /** Held weapon anchor at chest height (follows the aim pitch). */
   private readonly hand = new THREE.Group();
   private heldId = '';
   private heldMesh: THREE.Object3D | null = null;
   private attackT = 0;
+  private last: { x: number; z: number } | null = null;
+  private hits = -1;
 
   constructor(readonly id: string, name: string) {
-    const mat = new THREE.MeshStandardMaterial({ color: BODY_COLOR, roughness: 0.9 });
-    const r = MOVEMENT.radius;
-    this.body = new THREE.Mesh(new THREE.CapsuleGeometry(r, MOVEMENT.standHeight - 2 * r - 0.25, 4, 10), mat);
-    this.body.castShadow = true;
-    this.root.add(this.body);
-
-    this.head = new THREE.Group();
-    const skull = new THREE.Mesh(
-      new THREE.SphereGeometry(0.17, 12, 10),
-      new THREE.MeshStandardMaterial({ color: 0xb08b6e, roughness: 0.8 }),
-    );
-    skull.castShadow = true;
-    // A dark "visor" so you can tell which way someone is looking.
-    const visor = new THREE.Mesh(
-      new THREE.BoxGeometry(0.22, 0.06, 0.06),
-      new THREE.MeshStandardMaterial({ color: 0x111111 }),
-    );
-    visor.position.set(0, 0.02, -0.15);
-    this.head.add(skull, visor);
-    this.root.add(this.head);
-
+    const look: HumanoidLook = {
+      skin: mat(pickFor(SKINS, id, 3), 0.75),
+      shirt: mat(pickFor(JACKETS, id, 7), 0.9),
+      pants: mat(pickFor(PANTS, id, 11), 0.9),
+      shoes: mat(0x1d1a17, 0.7),
+      hair: pickFor([0, 1, 2, 3, 4], id, 13),
+    };
+    this.ownMaterials = [look.skin, look.shirt, look.pants, look.shoes];
+    this.body = new Humanoid(look, { zombie: false, limp: 0, hunch: 0, reach: 0, flail: false });
+    this.root.add(this.body.root);
     this.tag = makeNameTag(name);
     this.root.add(this.tag);
-    this.hand.position.set(0.25, 1.15, -0.25);
+    this.hand.position.set(0.18, 1.3, -0.3);
     this.root.add(this.hand);
   }
 
@@ -124,6 +126,8 @@ class RemotePlayer {
       crouch: (n.f & PlayerFlags.crouching) !== 0,
     });
     this.setHeld(n.h ?? '');
+    if (this.hits >= 0 && n.hc !== this.hits) this.body.hit();
+    this.hits = n.hc;
     if (this.buffer.length > 40) this.buffer.splice(0, this.buffer.length - 40);
   }
 
@@ -158,26 +162,39 @@ class RemotePlayer {
     const height = lerp(MOVEMENT.standHeight, MOVEMENT.crouchHeight, this.crouchBlend);
     this.root.position.set(s.x, s.y, s.z);
     this.root.rotation.y = s.yaw;
-    const bodyScale = (height - 0.25) / (MOVEMENT.standHeight - 0.25);
-    this.body.scale.y = bodyScale;
-    this.body.position.y = ((MOVEMENT.standHeight - 0.25) * bodyScale) / 2;
-    this.head.position.y = height - 0.17;
-    this.head.rotation.x = s.pitch;
-    this.tag.position.y = height + 0.35;
+
+    // Body animation from this frame's movement in the player's own frame.
+    const dx = this.last ? s.x - this.last.x : 0;
+    const dz = this.last ? s.z - this.last.z : 0;
+    this.last = { x: s.x, z: s.z };
+    const fx = -Math.sin(s.yaw), fz = -Math.cos(s.yaw);
+    const def = this.heldId ? getItemDef(this.heldId) : undefined;
     this.attackT = Math.max(0, this.attackT - dt * 5);
-    this.hand.position.y = height - 0.65;
-    this.hand.rotation.x = s.pitch * 0.8 + this.attackT * 0.9;
+    this.body.update({
+      localDx: dx * -fz + dz * fx,
+      localDz: -(dx * fx + dz * fz),
+      dt,
+      crouch: this.crouchBlend,
+      aimPitch: s.pitch,
+      holding: !def ? 'none' : def.category === 'ranged' ? 'gun' : def.category === 'melee' ? 'melee' : 'item',
+      attacking: this.attackT > 0.3,
+      dead: false,
+    });
+
+    this.tag.position.y = height + 0.35;
+    this.hand.position.y = height - 0.5;
+    this.hand.rotation.x = s.pitch * 0.9 + this.attackT * (def?.category === 'melee' ? 1.2 : 0.25);
   }
 
   dispose(): void {
-    this.root.traverse((o) => {
-      if (o instanceof THREE.Mesh || o instanceof THREE.Sprite) {
-        o.geometry.dispose();
-        const m = o.material as THREE.Material & { map?: THREE.Texture | null };
-        m.map?.dispose();
-        m.dispose();
-      }
-    });
+    // Body geometry is shared between all humanoids: only free what this player owns.
+    for (const m of this.ownMaterials) m.dispose();
+    (this.tag.material as THREE.SpriteMaterial).map?.dispose();
+    this.tag.material.dispose();
+    if (this.heldMesh instanceof THREE.Mesh) {
+      this.heldMesh.geometry.dispose();
+      (this.heldMesh.material as THREE.Material).dispose();
+    }
   }
 }
 

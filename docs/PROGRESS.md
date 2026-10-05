@@ -232,6 +232,30 @@ Everything is generated in code (no downloaded assets):
 - **Graphics quality** on **F8**: High (AO, 4K shadows), Medium (no AO, 2K shadows), Low (no post-processing,
   1K shadows, pixel ratio 1). Remembered in localStorage (`grey.gfx`).
 
+- **Load time**: generating the textures takes ~0.2 s. The very first load after a code change pays a one-time
+  ~5 s Direct3D (ANGLE) shader compile; later loads use Chrome's shader cache.
+  - Generator shaders are one small program per surface. A single big program took 6–12 s to compile.
+  - `renderer.compileAsync()` runs before the first frame, so joining doesn't freeze the page.
+
+## Extra: realistic animation pass (requested after M7)
+
+- `client/src/game/anim/Humanoid.ts`: a jointed procedural humanoid for players and zombies. It has hips, a spine
+  (lean, twist, hunch), neck and head with a simple face (and hair for survivors), shoulder/elbow/hand and
+  hip/knee/ankle joints, with capsule limbs.
+  - **Gait** is driven by distance travelled, so feet don't slide. It includes hip bob, sway and rotation, torso
+    counter-twist, arms opposite the legs, knee bend in the swing phase, a run lean, backpedal, strafe and crouch.
+  - **Zombie styles** (per zombie): reach, limp, hunch, runner arm-flailing, lunge/swipe attack.
+  - **Players** have a two-handed gun hold that follows their aim, a cocked melee arm with swing, and an item held low.
+  - **Hit flinch**: the server sends a hit counter `hc` in `NetPlayer`/`NetZombie`, and clients flinch when it changes.
+  - **Death**: knees buckle, then the body topples with gravity-like acceleration and goes limp.
+- **First person**:
+  - head-bob and roll synced to footsteps (`LocalPlayer.stepPhase`, advanced by distance)
+  - a landing dip scaled by fall speed
+  - spring-damped weapon sway that lags behind mouse look
+  - a figure-eight weapon bob
+  - a sprint pose (guns canted down and across, melee raised)
+  - idle breathing (reduced while aiming)
+
 ## Extra: assault rifle (requested after M7)
 
 - An `assault_rifle` item plus weapon. It's the first **full-auto** weapon (`WeaponDef.automatic`: hold to fire):

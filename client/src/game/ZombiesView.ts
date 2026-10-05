@@ -1,43 +1,33 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { NETWORK, ZOMBIE_TYPES, ZOMBIE_TYPE_ORDER, ZombieAnim, lerp, lerpAngle, type NetZombie, type ZombieType } from '@grey/shared';
+import { Humanoid, type HumanoidLook, type HumanoidStyle } from './anim/Humanoid';
 
-interface Look {
-  skin: number;
-  shirt: number;
-  pants: number;
-  /** Torso width multiplier (bloaters are fat). */
-  girth: number;
-}
+const mat = (c: number, rough = 0.9) => new THREE.MeshStandardMaterial({ color: c, roughness: rough });
 
-const LOOKS: Record<ZombieType, Look> = {
-  walker: { skin: 0x7d8a6c, shirt: 0x4a3b2c, pants: 0x2f3338, girth: 1 },
-  runner: { skin: 0x8f8170, shirt: 0x5a2a24, pants: 0x3a3a34, girth: 0.85 },
-  bloater: { skin: 0x9c9a68, shirt: 0x5b5a4a, pants: 0x3b352c, girth: 1.7 },
+/** Rotting skin per type and a few filthy clothing colours to vary the crowd. */
+const SKIN: Record<ZombieType, number> = { walker: 0x8b927a, runner: 0x9a8e7c, bloater: 0xa29f74 };
+const SHIRTS = [0x4a3b2c, 0x3d4648, 0x5a2a24, 0x5b5a4a, 0x3a3f33, 0x6b6257, 0x2f3540];
+const PANTS = [0x2f3338, 0x3a3a34, 0x3b352c, 0x41403a, 0x252a30];
+const materials = new Map<string, THREE.Material>();
+const cached = (key: string, make: () => THREE.Material) => {
+  let m = materials.get(key);
+  if (!m) materials.set(key, (m = make()));
+  return m;
 };
 
-const mat = (c: number) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.95 });
+const lookFor = (type: ZombieType, id: number): HumanoidLook => ({
+  skin: cached(`skin:${type}`, () => mat(SKIN[type], 0.85)),
+  shirt: cached(`shirt:${id % SHIRTS.length}`, () => mat(SHIRTS[id % SHIRTS.length], 0.95)),
+  pants: cached(`pants:${id % PANTS.length}`, () => mat(PANTS[id % PANTS.length], 0.95)),
+  shoes: cached('shoes', () => mat(0x1e1c1a, 0.8)),
+  girth: type === 'bloater' ? 1.7 : type === 'runner' ? 0.88 : 1,
+});
 
-/** Shared geometry/material per zombie type. Body = torso + head merged (one draw call). */
-const KITS = new Map<ZombieType, { body: THREE.BufferGeometry; limb: THREE.BufferGeometry; leg: THREE.BufferGeometry; skin: THREE.Material; shirt: THREE.Material; pants: THREE.Material }>();
-const kitFor = (type: ZombieType) => {
-  let kit = KITS.get(type);
-  if (kit) return kit;
-  const l = LOOKS[type];
-  const torso = new THREE.BoxGeometry(0.42 * l.girth, 0.62, 0.26 * l.girth).translate(0, 1.18, 0);
-  const head = new THREE.BoxGeometry(0.24, 0.27, 0.25).translate(0, 1.64, -0.04);
-  // Torso uses the shirt color via groups: simpler to colour the whole body as shirt and give heads skin.
-  const body = mergeGeometries([torso, head], true)!;
-  kit = {
-    body,
-    limb: new THREE.BoxGeometry(0.11, 0.62, 0.11).translate(0, -0.29, 0), // arm hangs from its pivot
-    leg: new THREE.BoxGeometry(0.15, 0.84, 0.15).translate(0, -0.42, 0), // leg hangs from the hip
-    skin: mat(l.skin),
-    shirt: mat(l.shirt),
-    pants: mat(l.pants),
-  };
-  KITS.set(type, kit);
-  return kit;
+const styleFor = (type: ZombieType, id: number): HumanoidStyle => {
+  const r = ((id * 2654435761) >>> 0) / 4294967296;
+  if (type === 'runner') return { zombie: true, limp: 0, hunch: 0.25, reach: 1.0, flail: true };
+  if (type === 'bloater') return { zombie: true, limp: 0.3, hunch: 0.05, reach: 1.1, flail: false };
+  return { zombie: true, limp: r * 0.7, hunch: 0.12 + r * 0.15, reach: 1.25 + r * 0.25, flail: false };
 };
 
 interface Sample {
@@ -50,46 +40,25 @@ interface Sample {
 }
 
 class ZombieMesh {
-  readonly root = new THREE.Group();
-  private readonly pose = new THREE.Group(); // tilts for the lunge / death fall
-  private readonly armL = new THREE.Group();
-  private readonly armR = new THREE.Group();
-  private readonly legL = new THREE.Group();
-  private readonly legR = new THREE.Group();
+  readonly body: Humanoid;
   private buffer: Sample[] = [];
-  private phase = Math.random() * 10;
-  private fall = 0;
-  private lunge = 0;
-  private readonly sway = Math.random() * 0.3 - 0.15;
+  private last: { x: number; z: number } | null = null;
+  private hits = -1;
 
   constructor(readonly id: number, readonly type: ZombieType) {
-    const kit = kitFor(type);
-    const scale = ZOMBIE_TYPES[type].scale;
-    const girth = LOOKS[type].girth;
-    const body = new THREE.Mesh(kit.body, [kit.shirt, kit.skin]);
-    body.castShadow = true;
-    this.pose.add(body);
-    const arm = (g: THREE.Group, x: number) => {
-      g.position.set(x * (0.24 * girth + 0.04), 1.45, 0);
-      g.add(new THREE.Mesh(kit.limb, kit.skin));
-      this.pose.add(g);
-    };
-    arm(this.armL, -1);
-    arm(this.armR, 1);
-    const leg = (g: THREE.Group, x: number) => {
-      g.position.set(x * 0.1 * girth, 0.86, 0);
-      g.add(new THREE.Mesh(kit.leg, kit.pants));
-      this.pose.add(g);
-    };
-    leg(this.legL, -1);
-    leg(this.legR, 1);
-    this.root.add(this.pose);
-    this.root.scale.setScalar(scale);
+    this.body = new Humanoid(lookFor(type, id), styleFor(type, id));
+    this.body.root.scale.setScalar(ZOMBIE_TYPES[type].scale);
+  }
+
+  get root(): THREE.Group {
+    return this.body.root;
   }
 
   push(n: NetZombie, t: number): void {
     this.buffer.push({ t, x: n.p[0], y: n.p[1], z: n.p[2], yaw: n.yaw, s: n.s });
     if (this.buffer.length > 30) this.buffer.splice(0, this.buffer.length - 30);
+    if (this.hits >= 0 && n.hc !== this.hits) this.body.hit();
+    this.hits = n.hc;
   }
 
   update(renderTime: number, dt: number): void {
@@ -106,36 +75,32 @@ class ZombieMesh {
       s = { t: renderTime, x: lerp(a.x, c.x, k), y: lerp(a.y, c.y, k), z: lerp(a.z, c.z, k), yaw: lerpAngle(a.yaw, c.yaw, k), s: k < 0.5 ? a.s : c.s };
       if (i > 0) b.splice(0, i);
     }
-    this.root.position.set(s.x, s.y, s.z);
-    this.root.rotation.y = s.yaw;
+    const root = this.body.root;
+    root.position.set(s.x, s.y, s.z);
+    root.rotation.y = s.yaw;
 
-    // --- procedural animation
-    const dead = s.s === ZombieAnim.dead;
-    const moving = s.s === ZombieAnim.walk || s.s === ZombieAnim.run;
-    const speed = s.s === ZombieAnim.run ? 11 : 4.5;
-    if (moving) this.phase += dt * speed;
-    const swing = moving ? Math.sin(this.phase) * (s.s === ZombieAnim.run ? 0.9 : 0.45) : 0;
-    this.legL.rotation.x = swing;
-    this.legR.rotation.x = -swing;
-
-    // Arms reach forward (the classic pose), runners pump them, attacks swipe down.
-    this.lunge += ((s.s === ZombieAnim.attack ? 1 : 0) - this.lunge) * (1 - Math.exp(-dt * 10));
-    const reach = s.s === ZombieAnim.run ? 0.9 + Math.sin(this.phase) * 0.5 : 1.35;
-    const idleBob = Math.sin(performance.now() / 600 + this.phase) * 0.06;
-    this.armL.rotation.x = reach + idleBob + this.lunge * 0.6 - (moving ? swing * 0.2 : 0);
-    this.armR.rotation.x = reach - idleBob + this.lunge * 0.6 + (moving ? swing * 0.2 : 0);
-    this.armL.rotation.z = -0.08;
-    this.armR.rotation.z = 0.08;
-
-    // Lean: forward when lunging, a permanent drunken sway; fall backwards when dead.
-    this.fall = dead ? Math.min(1, this.fall + dt * 2.2) : 0;
-    this.pose.rotation.x = -this.lunge * 0.35 + (dead ? this.fall * 1.45 : 0.08);
-    this.pose.rotation.z = dead ? 0 : this.sway + Math.sin(this.phase * 0.5) * 0.04;
-    this.pose.position.y = dead ? -this.fall * 0.15 : Math.abs(Math.sin(this.phase)) * (moving ? 0.03 : 0);
+    // Movement this frame in the zombie's own frame (drives the gait without foot sliding).
+    const dx = this.last ? s.x - this.last.x : 0;
+    const dz = this.last ? s.z - this.last.z : 0;
+    this.last = { x: s.x, z: s.z };
+    const fx = -Math.sin(s.yaw), fz = -Math.cos(s.yaw);
+    const forward = dx * fx + dz * fz;
+    const right = dx * -fz + dz * fx;
+    const scale = ZOMBIE_TYPES[this.type].scale;
+    this.body.update({
+      localDx: right / scale,
+      localDz: -forward / scale,
+      dt,
+      crouch: 0,
+      aimPitch: 0,
+      holding: 'none',
+      attacking: s.s === ZombieAnim.attack,
+      dead: s.s === ZombieAnim.dead,
+    });
   }
 }
 
-/** Server-simulated zombies, interpolated like remote players. */
+/** Server-simulated zombies, interpolated like remote players, procedurally animated. */
 export class ZombiesView {
   private readonly zombies = new Map<number, ZombieMesh>();
 

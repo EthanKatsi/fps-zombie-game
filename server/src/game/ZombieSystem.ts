@@ -53,6 +53,8 @@ interface ZombieEntity {
   heardUpTo: number;
   /** Recent positions (server clock) for lag-compensated shots. */
   history: PositionHistory;
+  /** Hit counter for client flinch animations. */
+  hits: number;
 }
 
 const dist2 = (a: Vec3, b: Vec3) => (a.x - b.x) ** 2 + (a.z - b.z) ** 2;
@@ -142,6 +144,7 @@ export class ZombieSystem {
       aloneSince: now,
       heardUpTo: now,
       history: new PositionHistory(1000),
+      hits: 0,
     };
     this.zombies.set(z.id, z);
     return z.id;
@@ -427,6 +430,7 @@ export class ZombieSystem {
     const z = this.zombies.get(id);
     if (!z || z.state === 'dead') return false;
     z.health -= amount;
+    z.hits = (z.hits + 1) & 255;
     if (z.health > 0) {
       if (attacker && attacker.alive) {
         z.target = attacker;
@@ -471,7 +475,7 @@ export class ZombieSystem {
         const speed = v ? Math.hypot(v.x, v.z) : 0;
         s = speed < 0.15 ? ZombieAnim.idle : speed > 2.2 ? ZombieAnim.run : ZombieAnim.walk;
       }
-      out.push({ id: z.id, t: ZOMBIE_TYPE_ORDER.indexOf(z.type), p: [r2(z.pos.x), r2(z.pos.y), r2(z.pos.z)], yaw: r2(z.yaw), s });
+      out.push({ id: z.id, t: ZOMBIE_TYPE_ORDER.indexOf(z.type), p: [r2(z.pos.x), r2(z.pos.y), r2(z.pos.z)], yaw: r2(z.yaw), s, hc: z.hits });
     }
     return out;
   }

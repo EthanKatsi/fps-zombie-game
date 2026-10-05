@@ -35,6 +35,8 @@ export class ServerPlayer {
   /** Ground item ids this client has been told about (interest management). */
   knownGround = new Set<string>();
   alive = true;
+  /** Times hurt (mod 256), for client flinch animations. */
+  hitCount = 0;
   /** performance.now() of death; respawn is allowed after SURVIVAL.respawn.delaySec. */
   diedAt = 0;
   /** Item being consumed (eating, bandaging...). */
