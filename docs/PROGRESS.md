@@ -158,6 +158,9 @@ Other commits: menu retitle to "The Walking Dead" (`8937010`).
   - `ui/CombatHud.ts`: a crosshair that widens with spread, an ammo counter, hit markers (red for head/kill), the
     rifle scope overlay and a damage direction arc.
   - Remote players show their held item and a muzzle flash.
+- **Wayfinding** (added after M5): the police station has a blue/white stripe band and a roof light bar, and the
+  debug overlay shows which building and floor you're in ("in Police station (floor 2)"). In seed 1337 the
+  police station is around x=-187, z=163.
 - **Not yet**: lag compensation (M7). The server currently tests against present positions, so fast-moving targets
   are a little harder to hit at high ping. Structure damage from melee comes in M10.
 
@@ -179,6 +182,7 @@ Other commits: menu retitle to "The Walking Dead" (`8937010`).
   - headshot multiplier, and kill confirmation with the killer's name
   - crossbow projectile
   - knocking a dummy down
+- Gotcha: players can overlap (no player-player collision). Keep test players apart from spawn points and each other, or a bystander takes the hit.
 - Gotcha: a teleported test player counts as airborne (+4° spread) until they send a movement input. Use `settle()`.
 - Gotcha: the test map scatters wrecked cars just outside a 6 m radius of the origin. Put test players within ~2 m of the origin, or line-of-sight checks will (correctly) fail.
 

@@ -15,7 +15,7 @@ const PALETTE: Record<string, number> = {
   car_red: 0x6e2a24, car_blue: 0x2f3f55, car_white: 0xa9a79f, car_rust: 0x7a4a2c, car_green: 0x3e4d3a,
   car_black: 0x1d1e1f, car_glass: 0x262b2e,
   sign_green: 0x2f6b3a, sign_white: 0xd6d4cb, sign_orange: 0xb3631d, sign_red: 0x8e1f1a, sign_blue: 0x29466e,
-  door: 0x5b4632, sandbag: 0x8a7d5c,
+  door: 0x5b4632, sandbag: 0x8a7d5c, police_blue: 0x1f3f8a, light_red: 0xb3261e,
 };
 const MISSING = 0xff00ff;
 

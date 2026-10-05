@@ -444,6 +444,22 @@ export const buildBuilding = (
   push(fr.box(0, 0.2, top, top + 0.6, 0.2, D - 0.2, ext));
   push(fr.box(W - 0.2, W, top, top + 0.6, 0.2, D - 0.2, ext));
 
+  // ---- police markings: stripe band around the building and a light bar on the roof
+  if (type === 'police') {
+    const y0 = groundY + 2.55;
+    const band = (m: string, dy: number) => {
+      const a = y0 + dy, b = a + 0.25;
+      push(fr.box(0, W, a, b, -0.06, 0, m, { col: false }));
+      push(fr.box(0, W, a, b, D, D + 0.06, m, { col: false }));
+      push(fr.box(-0.06, 0, a, b, 0, D, m, { col: false }));
+      push(fr.box(W, W + 0.06, a, b, 0, D, m, { col: false }));
+    };
+    band('police_blue', 0);
+    band('sign_white', 0.25);
+    push(fr.box(W / 2 - 1.2, W / 2, top + 0.6, top + 0.9, 1.0, 1.4, 'light_red', { col: false }));
+    push(fr.box(W / 2, W / 2 + 1.2, top + 0.6, top + 0.9, 1.0, 1.4, 'police_blue', { col: false }));
+  }
+
   // ---- storefront sign
   const sign = SIGNS[type];
   if (sign) {

@@ -84,13 +84,14 @@ const aimAt = (p: ServerPlayer, t: Vec3): [number, number, number] => {
 
 /** Send a few idle movement inputs so a teleported player lands (grounded = normal spread). */
 const inputSeq = new Map<C, number>();
-const settle = async (c: C, yaw = 0) => {
+const settle = async (c: C, yaw = 0, pitch = 0) => {
   for (let i = 0; i < 4; i++) {
     const seq = (inputSeq.get(c) ?? 0) + 1;
     inputSeq.set(c, seq);
-    c.emit('input', [{ seq, mx: 0, mz: 0, yaw, pitch: 0, b: 0 }]);
+    c.emit('input', [{ seq, mx: 0, mz: 0, yaw, pitch, b: 0 }]);
     await sleep(35);
   }
+  await sleep(100); // let the server apply them all
 };
 
 let seqs = new Map<ServerPlayer, number>();
@@ -161,13 +162,14 @@ test('switching weapons cancels a reload', async () => {
 test('melee costs stamina, lands after the windup and hurts players', async () => {
   const a = await connect('brawler');
   const v = await connect('victim');
-  a.p.teleport({ x: 0, y: 0, z: 0 }, 0);
-  v.p.teleport({ x: 0, y: 0, z: -1.3 });
-  await Promise.all([settle(a.c), settle(v.c)]);
+  // Away from spawn points and the other tests' players (players can overlap; a bystander in
+  // the swing would take the hit instead).
+  a.p.teleport({ x: -8, y: 0, z: -3 }, 0);
+  v.p.teleport({ x: -8, y: 0, z: -4.3 });
   equip(a.p, 'bat');
-  // Aim at the victim's chest (the server uses the latest view direction for the swing).
-  const dir = aimAt(a.p, { x: 0, y: 1.0, z: -1.3 });
-  a.p.state = { ...a.p.state, yaw: 0, pitch: Math.asin(dir[1]) };
+  // Aim at the victim's chest: the server swings along the latest view direction from inputs.
+  const dir = aimAt(a.p, { x: -8, y: 1.0, z: -4.3 });
+  await Promise.all([settle(a.c, 0, Math.asin(dir[1])), settle(v.c)]);
   const stamina = a.p.state.stamina;
   const dmg = next(v.c, 'damaged');
   attack(a.c, a.p, dir);

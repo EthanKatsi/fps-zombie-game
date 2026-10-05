@@ -8,6 +8,7 @@ import {
   getItemDef,
   getWeaponDef,
   weaponForItem,
+  CITY,
   PLAYER_GROUPS,
   RENDER,
   SURVIVAL,
@@ -37,6 +38,16 @@ import { Viewmodel } from './weapons/Viewmodel';
 import { WeaponController } from './weapons/WeaponController';
 
 const BASE_FOV = 75;
+
+const BUILDING_NAMES: Record<string, string> = {
+  house: 'House',
+  apartment: 'Apartment block',
+  grocery: 'Grocery store',
+  pharmacy: 'Pharmacy',
+  hardware: 'Hardware store',
+  gunshop: 'Gun shop',
+  police: 'Police station',
+};
 
 export interface GameUi {
   setPaused(paused: boolean): void;
@@ -462,7 +473,7 @@ export class Game {
         [
           this.mapMismatch ? '!! MAP MISMATCH - refresh the page !!' : '',
           `${this.fps} fps · ${info.calls} draws · ${(info.triangles / 1000).toFixed(0)}k tris · ${Math.round(this.conn.rtt)} ms ping`,
-          `pos ${p.x.toFixed(1)} ${p.y.toFixed(1)} ${p.z.toFixed(1)}${this.local.state.grounded ? '' : ' (air)'}`,
+          `pos ${p.x.toFixed(1)} ${p.y.toFixed(1)} ${p.z.toFixed(1)}${this.local.state.grounded ? '' : ' (air)'} · ${this.locationLabel()}`,
           `pending ${this.local.pendingCount} · last correction ${this.local.lastCorrection.toFixed(3)} m`,
           `players ${this.online} online, ${this.remotes.count} nearby · ${this.groundItems.count} items near`,
         ]
@@ -470,6 +481,19 @@ export class Game {
           .join('\n'),
       );
     }
+  }
+
+  /** Which building the player is in (helps find shops until there's a map). */
+  private locationLabel(): string {
+    const p = this.local.state.pos;
+    for (const b of this.map.buildings) {
+      const [x0, z0, x1, z1] = b.bounds;
+      if (p.x < x0 || p.x > x1 || p.z < z0 || p.z > z1) continue;
+      const floor = Math.floor((p.y - b.floorY + 0.5) / CITY.floorHeight);
+      const where = floor >= b.floors ? 'roof' : floor > 0 ? `floor ${floor + 1}` : 'ground floor';
+      return `in ${BUILDING_NAMES[b.type]} (${where})`;
+    }
+    return 'outside';
   }
 
   dispose(): void {

@@ -176,11 +176,11 @@ export class SurvivalSystem {
     if (!item || !def?.consume) return;
     const s = p.record.stats;
     const c = def.consume;
-    // Don't waste items that would do nothing.
+    // Don't waste items that would do nothing (allow a point of slack for the constant drain).
     const useful =
-      (c.health && s.health < SURVIVAL.health.max) ||
-      (c.hunger && c.hunger > 0 && s.hunger < SURVIVAL.hunger.max) ||
-      (c.thirst && c.thirst > 0 && s.thirst < SURVIVAL.thirst.max) ||
+      (c.health && s.health < SURVIVAL.health.max - 1) ||
+      (c.hunger && c.hunger > 0 && s.hunger < SURVIVAL.hunger.max - 1) ||
+      (c.thirst && c.thirst > 0 && s.thirst < SURVIVAL.thirst.max - 1) ||
       (c.stopsBleeding && s.bleeding);
     if (!useful) {
       p.socket.emit('notice', { text: `You don't need that right now` });
