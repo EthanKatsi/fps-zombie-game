@@ -501,3 +501,95 @@ kbd {
     grid-template-columns: repeat(5, 40px);
   }
 }
+
+/* ---------------------------------------------------------------- survival */
+
+.fill.health { background: #a8322b; }
+.fill.hunger { background: #8a7a3a; }
+.fill.thirst { background: #3b78a8; }
+.fill.low { animation: pulse 0.9s infinite alternate; }
+
+@keyframes pulse {
+  from { opacity: 1; }
+  to { opacity: 0.35; }
+}
+
+#stats .bar .label {
+  width: 42px;
+}
+
+#bleeding {
+  font: bold 12px Consolas, monospace;
+  letter-spacing: 0.2em;
+  color: #e0574f;
+  animation: pulse 0.6s infinite alternate;
+}
+
+#vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 55%, rgba(140, 0, 0, 0.85) 100%);
+  opacity: 0;
+  transition: opacity 0.6s;
+}
+
+#vignette.hit {
+  transition: none;
+}
+
+#use-progress {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 70px);
+  transform: translateX(-50%);
+  width: 200px;
+  text-align: center;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-shadow: 0 1px 2px #000;
+}
+
+#use-progress .track {
+  margin-top: 4px;
+  height: 5px;
+}
+
+#use-fill {
+  height: 100%;
+  width: 0;
+  background: #d8d4c8;
+}
+
+#death {
+  background: radial-gradient(ellipse at center, rgba(60, 0, 0, 0.55), rgba(0, 0, 0, 0.92));
+}
+
+.death-card {
+  text-align: center;
+}
+
+.death-card h2 {
+  font-size: 56px;
+  letter-spacing: 0.3em;
+  color: #b3261e;
+  text-shadow: 0 3px 0 #000;
+  margin: 0 0 12px;
+}
+
+#death-cause {
+  font-size: 18px;
+  margin: 0 0 8px;
+}
+
+#respawn-btn {
+  margin-top: 18px;
+  min-width: 220px;
+}
+
+/* Stat bars sit above the hotbar when the screen is too narrow for both side by side. */
+@media (max-width: 1100px) {
+  #stats {
+    bottom: 92px;
+  }
+}

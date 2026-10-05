@@ -38,6 +38,18 @@ export class LocalPlayer {
     this.eye = eyeHeight(initial.crouching);
   }
 
+  /** Hard reset to a server state (respawn / teleport): no smoothing, no pending inputs. */
+  resetTo(state: MoveState): void {
+    this.state = cloneMoveState(state);
+    this.prev = cloneMoveState(state);
+    this.pending = [];
+    this.errorOffset.set(0, 0, 0);
+    this.motor.syncCollider(this.state);
+    this.input.yaw = state.yaw;
+    this.input.pitch = 0;
+    this.eye = eyeHeight(state.crouching);
+  }
+
   /** Run one prediction tick and return the input to send to the server. */
   fixedUpdate(): MoveInput {
     const { mx, mz, b } = this.input.sample();

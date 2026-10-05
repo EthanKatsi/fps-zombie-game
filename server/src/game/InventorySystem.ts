@@ -3,6 +3,7 @@ import {
   ContainerIndex,
   INVENTORY,
   PLAYER_GROUPS,
+  SURVIVAL,
   craft,
   eyeHeight,
   getItemDef,
@@ -16,6 +17,7 @@ import {
   type SlotRef,
   type Vec3,
 } from '@grey/shared';
+import { randomUUID } from 'node:crypto';
 import { ContainerSystem, makeUid, type WorldContainer } from './ContainerSystem';
 import { GroundItems } from './GroundItems';
 import type { ServerPlayer } from './ServerPlayer';
@@ -38,6 +40,10 @@ export class InventorySystem {
     private readonly players: () => Iterable<ServerPlayer>,
   ) {
     this.containers = new ContainerSystem(map.containers);
+    // A death bag vanishing from the world (emptied / despawned) removes its container too.
+    this.ground.onRemove = (g) => {
+      if (g.bag) this.containers.remove(g.bag.key);
+    };
   }
 
   // ------------------------------------------------------------------ helpers
@@ -80,10 +86,10 @@ export class InventorySystem {
   /** Range + line of sight: the first thing the eye ray hits must be the container itself. */
   private canReachContainer(p: ServerPlayer, c: WorldContainer): boolean {
     const eye = this.eye(p);
-    const slack = c.spawn?.s ? 0.6 : 1.6;
+    const slack = c.spawn?.s ? 0.6 : c.spawn ? 1.6 : 0.6;
     if (this.distToContainer(c, eye) > INVENTORY.useRange + slack) return false;
-    if (!c.spawn) return true;
     const hit = this.rayHit(eye, c.pos);
+    if (!c.spawn) return hit === null || hit.toi > hit.dist - 0.4; // dynamic: nothing solid in between
     return hit === null || ContainerIndex.contains(c.spawn, hit.x, hit.y, hit.z, 0.12);
   }
 
@@ -116,6 +122,12 @@ export class InventorySystem {
     if (Math.hypot(target.x - eye.x, target.y - eye.y, target.z - eye.z) > INVENTORY.useRange + 0.5) return;
     const hit = this.rayHit(eye, target);
     if (hit && hit.toi < hit.dist - 0.3) return; // something in the way
+    if (g.bag) {
+      const c = this.containers.get(g.bag.key);
+      if (c) this.containers.open(p, c);
+      return;
+    }
+    if (!g.stack) return;
     const moved = insertStack(p.inventory.slots, g.stack, g.stack.qty, makeUid, INVENTORY.maxCarryWeight);
     if (moved === 0) {
       this.notice(p, 'Too heavy or no space');
@@ -169,7 +181,37 @@ export class InventorySystem {
     if (!res.ok) this.notice(p, res.reason);
     this.sendInventory(p);
     const c = src.container ?? dst.container;
-    if (c) this.containers.broadcast(c);
+    if (c) {
+      this.containers.broadcast(c);
+      this.removeBagIfEmpty(c);
+    }
+  }
+
+  /** Death bags disappear once they've been emptied. */
+  private removeBagIfEmpty(c: WorldContainer): void {
+    if (c.kind !== 'loot_bag' || c.slots.some(Boolean)) return;
+    const g = [...this.ground.items.values()].find((x) => x.bag?.key === c.key);
+    if (g) this.ground.remove(g.id, this.players());
+  }
+
+  /**
+   * Move a dead player's whole inventory into a lootable bag at their feet.
+   * Returns false when there was nothing to drop.
+   */
+  dropDeathBag(p: ServerPlayer, now: number): boolean {
+    this.containers.close(p);
+    const items = p.inventory.slots.filter(Boolean);
+    p.inventory.slots = p.inventory.slots.map(() => null);
+    if (items.length === 0) return false;
+    const slots: Slots = Array.from({ length: Math.max(INVENTORY.containerSlots.loot_bag, items.length) }, (_, i) => items[i] ?? null);
+    const id = randomUUID().slice(0, 12);
+    const key = `b${id}`;
+    const title = `${p.username}'s Bag`;
+    const pos = { x: p.state.pos.x, y: p.state.pos.y + 0.2, z: p.state.pos.z };
+    this.containers.addDynamic(key, 'loot_bag', title, pos, slots);
+    this.ground.spawnBag(id, key, title, pos, now + SURVIVAL.lootBagDespawnMin * 60_000);
+    this.ground.sync([...this.players()], now);
+    return true;
   }
 
   private drop(p: ServerPlayer, from: SlotRef, qty?: number): void {

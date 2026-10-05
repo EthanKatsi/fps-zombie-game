@@ -3,8 +3,8 @@
 Browser-based multiplayer open-world zombie survival FPS set in the abandoned city of Calder Point.
 TypeScript · Three.js · Rapier · Node · Socket.IO · SQLite.
 
-> Work in progress. Milestones 1-3 are done: multiplayer first-person movement in a procedurally generated
-> city with enterable buildings, doors and stairs, plus inventory, looting, crafting and item drops.
+> Work in progress. Milestones 1-4 are done: multiplayer first-person movement in a procedurally generated
+> city with enterable buildings, doors and stairs, plus inventory, looting, crafting, item drops, survival stats, death bags and respawning.
 > Status and next steps: [docs/PROGRESS.md](docs/PROGRESS.md). A full README
 > lands in milestone 11. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
 
@@ -31,6 +31,7 @@ Open a second browser window with a different name to see multiplayer.
 | Tab / I | Inventory (drag to move, Ctrl+drag split, right-click quick-move, drag outside to drop) |
 | 1-9 / mouse wheel | Select hotbar slot |
 | Q | Drop held item |
+| Left click | Use the held food/drink/medicine (or double-click it in the inventory) |
 | Esc | Release mouse / pause |
 
 ## Other commands

@@ -47,6 +47,7 @@ export const renderItem = (el: HTMLElement, s: ItemStack | null): void => {
 };
 
 export interface InventoryUIActions {
+  use(slot: number): void;
   move(from: SlotRef, to: SlotRef, qty?: number): void;
   drop(from: SlotRef, qty?: number): void;
   craft(recipeId: string): void;
@@ -157,6 +158,12 @@ export class InventoryUI {
       el.dataset.owner = ref.owner;
       el.dataset.index = String(ref.index);
       el.addEventListener('pointerdown', (e) => this.onSlotDown(e, ref));
+      if (ref.owner === 'self') {
+        el.addEventListener('dblclick', () => {
+          const s = this.stackAt(ref);
+          if (s && getItemDef(s.defId)?.consume) this.actions.use(ref.index);
+        });
+      }
       el.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         this.quickMove(ref);
@@ -248,6 +255,7 @@ export class InventoryUI {
       ].filter(Boolean);
       if (fx.length) lines.push(`<div>${fx.join(' · ')}</div>`);
     }
+    if (def.consume && ref.owner === 'self') lines.push(`<div class="muted">Double-click (or left-click in hand) to use</div>`);
     if (def.maxDurability && s.durability !== undefined) {
       lines.push(`<div class="muted">Condition ${Math.round((s.durability / def.maxDurability) * 100)}%</div>`);
     }

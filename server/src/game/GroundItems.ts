@@ -2,9 +2,11 @@ import { INVENTORY, type GroundItemNet, type ItemStack, type Vec3 } from '@grey/
 import { randomUUID } from 'node:crypto';
 import type { ServerPlayer } from './ServerPlayer';
 
+/** Something lying in the world: a dropped item stack, or a death bag (a searchable container). */
 export interface GroundItem {
   id: string;
-  stack: ItemStack;
+  stack: ItemStack | null;
+  bag: { key: string; title: string } | null;
   pos: Vec3;
   rot: number;
   despawnAt: number;
@@ -12,36 +14,50 @@ export interface GroundItem {
 
 const toNet = (g: GroundItem): GroundItemNet => ({
   id: g.id,
-  defId: g.stack.defId,
-  qty: g.stack.qty,
+  defId: g.bag ? 'loot_bag' : g.stack!.defId,
+  qty: g.stack?.qty ?? 1,
+  ...(g.bag ? { title: g.bag.title } : {}),
   p: [Math.round(g.pos.x * 100) / 100, Math.round(g.pos.y * 100) / 100, Math.round(g.pos.z * 100) / 100],
   rot: Math.round(g.rot * 100) / 100,
 });
 
 /**
- * Items lying in the world, with interest management: each player only knows about
- * items within INVENTORY.groundItemViewRadius, and gets add/remove deltas as they move.
+ * World items with interest management: each player only knows about items within
+ * INVENTORY.groundItemViewRadius, and gets add/remove deltas as they move.
  */
 export class GroundItems {
   readonly items = new Map<string, GroundItem>();
+  /** Called whenever an entry disappears (pickup, empty bag, despawn). */
+  onRemove: (g: GroundItem) => void = () => {};
 
-  spawn(stack: ItemStack, pos: Vec3, now: number): GroundItem {
-    const g: GroundItem = {
-      id: randomUUID().slice(0, 12),
-      stack,
-      pos: { ...pos },
-      rot: Math.random() * Math.PI * 2,
-      despawnAt: now + INVENTORY.groundItemDespawnMin * 60_000,
-    };
+  private add(g: GroundItem): GroundItem {
     this.items.set(g.id, g);
     return g;
   }
 
+  spawn(stack: ItemStack, pos: Vec3, now: number): GroundItem {
+    return this.add({
+      id: randomUUID().slice(0, 12),
+      stack,
+      bag: null,
+      pos: { ...pos },
+      rot: Math.random() * Math.PI * 2,
+      despawnAt: now + INVENTORY.groundItemDespawnMin * 60_000,
+    });
+  }
+
+  spawnBag(id: string, key: string, title: string, pos: Vec3, despawnAt: number): GroundItem {
+    return this.add({ id, stack: null, bag: { key, title }, pos: { ...pos }, rot: Math.random() * Math.PI * 2, despawnAt });
+  }
+
   remove(id: string, players: Iterable<ServerPlayer>): void {
-    if (!this.items.delete(id)) return;
+    const g = this.items.get(id);
+    if (!g) return;
+    this.items.delete(id);
     for (const p of players) {
       if (p.knownGround.delete(id)) p.socket.emit('groundItems', { add: [], remove: [id] });
     }
+    this.onRemove(g);
   }
 
   /** Quantity changed (partial pickup): re-send to everyone who knows it. */

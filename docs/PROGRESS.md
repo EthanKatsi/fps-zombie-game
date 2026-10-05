@@ -10,8 +10,8 @@ Original requirements: [SPEC.md](SPEC.md). Design: [ARCHITECTURE.md](ARCHITECTUR
 | 1 | Monorepo, physics FPS controller, multiplayer | ✅ Done | `df3293b` (+ mouse fix `63370cd`) |
 | 2 | City generation, buildings, doors, stairs, performance | ✅ Done | `5a8abfe` |
 | 3 | Inventory, looting containers, item pickup/drop | ✅ Done | `8e67c76` |
-| 4 | Survival stats, death, respawn | ⏳ Next | |
-| 5 | Weapons & FPS combat with viewmodels | | |
+| 4 | Survival stats, death, respawn | ✅ Done | see `git log` |
+| 5 | Weapons & FPS combat with viewmodels | ⏳ Next | |
 | 6 | Zombies (navmesh AI, noise/vision, combat) | | |
 | 7 | PvP, lag-compensated hits, death loot bags, kill feed | | |
 | 8 | Groups/teams and chat | | |
@@ -92,6 +92,34 @@ Other commits: menu retitle to "The Walking Dead" (`8937010`).
 - Existing players created before M3 don't get the starting kit; only new survivors do.
 - `use` (eat/drink/heal) is wired as an op but answers "arrives in milestone 4".
 
+## Milestone 4: survival ✅
+
+- **Config** (`shared/src/config/survival.ts`):
+  - Hunger drains 1.25/min and thirst 1.8/min, faster while sprinting.
+  - Starvation, dehydration and bleeding each deal damage per second.
+  - Health regenerates while food and water are both 70 or above.
+  - Fall damage starts at a 13 m/s landing (about a 3.8 m drop), and falls dealing 25 or more start bleeding.
+  - Respawn delay is 5 s, and the death bag despawns after 30 min.
+- **Server** (`server/src/game/SurvivalSystem.ts`):
+  - Ticks the stats and sends `stats` when the rounded values change (checked every 0.5 s).
+  - All damage goes through `damage(p, amount, cause, attacker?)`. Zombies (M6) and PvP (M7) must use it.
+  - `kill()` moves the whole inventory into a death bag, counts deaths and kills, and sends `died`.
+  - Fall damage comes from `ServerPlayer.simulate(dt, onLand)` landing detection. It's server-only and not predicted.
+- **Consumables**: the `use` op (left-click with the item in hand, or double-click it in the inventory).
+  - Each has a use time (`ItemDef.consume.useTimeMs`) and shows a progress bar.
+  - Sprinting, or moving/dropping the item, cancels it.
+  - Items that would do nothing are refused ("You don't need that right now").
+- **Death**: the player is marked dead and ignores inputs (but still acks their seq numbers).
+  - Dead players are left out of other players' snapshots.
+  - The client stops predicting and shows the death screen with the cause and a countdown.
+  - `respawn` gives a random edge spawn, full health, 80 food and water, and a fresh starting kit.
+  - The client calls `LocalPlayer.resetTo(state)`.
+- **Death bags**: dynamic containers (`ContainerSystem.addDynamic`, key `b<id>`) shown in the world as ground items with `defId: 'loot_bag'`.
+  - "Search X's Bag" opens the container.
+  - A bag disappears when emptied or when it despawns (`GroundItems.onRemove` also removes its container).
+- If a player disconnects while dead, their next join starts a fresh life (`reviveAt`).
+- **Client**: `ui/SurvivalHud.ts` handles the HP, food, water and stamina bars (pulsing when low), the BLEEDING warning, the hit flash and low-health vignette, the use progress bar, and the death screen.
+
 ## Tests (run `npm test`)
 
 - `shared/test/movement.test.ts`: physics, determinism, crouch, stairs.
@@ -100,6 +128,8 @@ Other commits: menu retitle to "The Walking Dead" (`8937010`).
 - `server/test/multiplayer.test.ts`: join, visibility, duplicate names, input application, speedhack limit, persistence (on the test map).
 - `server/test/doors.test.ts`: door range, swing blocking, junk ids.
 - `server/test/items.test.ts`: starting kit, looting in range, no looting through walls, weight limit, crafting, drop and pickup across players, auto-close, junk ops ignored.
+- `server/test/survival.test.ts`: drain, eating with use time, cancelling, refusing a useless use, starvation death leading to a lootable bag that vanishes when emptied, respawn delay and kit, fall damage and bleeding.
+- Gotcha: the test map scatters wrecked cars just outside a 6 m radius of the origin. Put test players within ~2 m of the origin, or line-of-sight checks will (correctly) fail.
 
 ## Known issues / notes
 
@@ -110,14 +140,6 @@ Other commits: menu retitle to "The Walking Dead" (`8937010`).
 
 ## Plan for the next milestones
 
-- **M4 Survival**:
-  - Server-side stats: hunger/thirst drain (`SURVIVAL` config), and starvation/dehydration damage at 0.
-  - Bleeding later, from combat.
-  - The `use` op with a use-time (cancelled by sprinting), using `ItemDef.consume`.
-  - HUD bars for health, hunger and thirst.
-  - Death drops the inventory as a `loot_bag` container (dynamic container in `ContainerSystem`, key `b<uuid>`).
-  - Death screen, then respawn at a random edge spawn (or a bed in M9).
-  - Persist the stats.
 - **M5 Combat**:
   - `shared/src/config/weapons.ts` (WeaponDef numbers).
   - Viewmodels (primitive meshes) with swing, fire and reload animations.

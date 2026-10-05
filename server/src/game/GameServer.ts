@@ -13,10 +13,7 @@ import {
   doorSweepBlocked,
   eyeHeight,
   hashMap,
-  insertStack,
   loadMap,
-  makeItem,
-  INVENTORY,
   type InteractRequest,
   type JoinRequest,
   type MapData,
@@ -29,7 +26,7 @@ import type { PlayerRepository } from '../db/PlayerRepository';
 import { SERVER_CONFIG } from '../config';
 import { ServerPlayer } from './ServerPlayer';
 import { InventorySystem } from './InventorySystem';
-import { makeUid } from './ContainerSystem';
+import { SurvivalSystem, giveStartingKit, netStats } from './SurvivalSystem';
 import type { GameIO, GameSocket } from './types';
 
 const r2 = (n: number): number => Math.round(n * 100) / 100;
@@ -43,6 +40,7 @@ export class GameServer {
   readonly mapHash: string;
   readonly doors: DoorColliders;
   readonly items: InventorySystem;
+  readonly survival: SurvivalSystem;
   private doorsDirty = false;
   /** Door id -> time (ms) until which it can't be toggled again (swing animation). */
   private readonly doorBusyUntil = new Map<number, number>();
@@ -69,6 +67,7 @@ export class GameServer {
     this.doors = new DoorColliders(R, this.world, this.map.doors);
     this.world.step(); // populate the broad-phase so scene queries see the map
     this.items = new InventorySystem(R, this.world, this.map, () => this.players.values());
+    this.survival = new SurvivalSystem(this.items, () => this.spawnPoint());
     console.log(`[game] world built in ${Math.round(performance.now() - t0)} ms`);
     io.on('connection', (s) => this.onConnection(s));
   }
@@ -134,13 +133,21 @@ export class GameServer {
 
     socket.on('input', (inputs) => player?.enqueueInputs(inputs));
     socket.on('interact', (req) => {
-      if (player) this.handleInteract(player, req);
+      if (player?.alive) this.handleInteract(player, req);
     });
     socket.on('invOp', (op) => {
-      if (player) this.items.handleOp(player, op);
+      if (!player?.alive) return;
+      if (op?.op === 'use') this.survival.startUse(player, op.slot);
+      else this.items.handleOp(player, op);
     });
     socket.on('closeContainer', () => {
       if (player) this.items.closeContainer(player);
+    });
+    socket.on('cancelUse', () => {
+      if (player) this.survival.cancelUse(player);
+    });
+    socket.on('respawn', () => {
+      if (player) this.survival.respawn(player);
     });
 
     socket.on('disconnect', () => {
@@ -177,19 +184,15 @@ export class GameServer {
       const record = existing ?? (await this.repo.create(auth.username, this.randomSpawn()));
       if (!socket.connected) return null;
 
-      if (!existing) {
-        // Fresh survivor: hand out the starting kit.
-        for (const k of INVENTORY.startingKit) {
-          const stack = makeItem(k.item, k.qty, makeUid, Math.random);
-          if (stack) insertStack(record.inventory.slots, stack, k.qty, makeUid);
-        }
-      }
+      if (!existing) giveStartingKit(record); // fresh survivor
       let spawn = record.position;
       if (!existing || !this.isValidPosition(spawn)) {
         spawn = existing ? this.randomSpawn() : record.position;
         record.yaw = yawTowardCenter(spawn);
       }
       const player = new ServerPlayer(this.R, this.world, socket, record, spawn);
+      // Died and left before respawning: start a fresh life.
+      if (record.stats.health <= 0) this.survival.reviveAt(player, this.spawnPoint());
       this.players.set(player.id, player);
 
       socket.emit('joinAccepted', {
@@ -203,6 +206,7 @@ export class GameServer {
         mapHash: this.mapHash,
         openDoors: this.doors.openIds(),
         inventory: player.inventory,
+        stats: netStats(player),
         players: [...this.players.values()].map((p) => ({ id: p.id, username: p.username })),
       });
       socket.broadcast.emit('playerJoined', { id: player.id, username: player.username });
@@ -267,6 +271,12 @@ export class GameServer {
     return { ...pts[Math.floor(Math.random() * pts.length)] };
   }
 
+  /** Random edge spawn facing into the city. */
+  private spawnPoint(): { pos: Vec3; yaw: number } {
+    const pos = this.randomSpawn();
+    return { pos, yaw: yawTowardCenter(pos) };
+  }
+
   // ---------------------------------------------------------------- simulation
 
   private step(): void {
@@ -276,15 +286,18 @@ export class GameServer {
       this.doorsDirty = false;
     }
     for (const p of this.players.values()) {
-      p.simulate(TICK_DT);
-      if (p.state.pos.y < -30) {
+      p.simulate(TICK_DT, (impact) => this.survival.onLand(p, impact));
+      if (p.alive && p.state.pos.y < -30) {
         // Fell out of the world.
         const spawn = this.randomSpawn();
         p.teleport(spawn, yawTowardCenter(spawn));
       }
     }
 
-    if (this.tick % 10 === 0) this.items.update([...this.players.values()], performance.now());
+    const now = performance.now();
+    this.survival.update(this.players.values(), TICK_DT, now);
+    if (this.tick % 10 === 0) this.items.update([...this.players.values()], now);
+    if (this.tick % 15 === 0) this.survival.flushStats(this.players.values());
 
     this.snapshotAcc += NETWORK.snapshotRate / NETWORK.tickRate;
     if (this.snapshotAcc >= 1) {
@@ -315,7 +328,7 @@ export class GameServer {
     for (const me of all) {
       const visible: NetPlayer[] = [];
       for (const other of all) {
-        if (other === me) continue;
+        if (other === me || !other.alive) continue;
         const dx = other.state.pos.x - me.state.pos.x;
         const dz = other.state.pos.z - me.state.pos.z;
         if (dx * dx + dz * dz <= r2max) visible.push(net.get(other.id)!);

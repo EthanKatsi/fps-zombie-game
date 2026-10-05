@@ -29,6 +29,11 @@ export class ServerPlayer {
   openContainer: WorldContainer | null = null;
   /** Ground item ids this client has been told about (interest management). */
   knownGround = new Set<string>();
+  alive = true;
+  /** performance.now() of death; respawn is allowed after SURVIVAL.respawn.delaySec. */
+  diedAt = 0;
+  /** Item being consumed (eating, bandaging...). */
+  using: { slot: number; uid: string; defId: string; endsAt: number } | null = null;
 
   constructor(
     R: Rapier,
@@ -66,13 +71,24 @@ export class ServerPlayer {
     }
   }
 
-  /** Apply queued inputs within this tick's budget. */
-  simulate(dt: number): void {
+  /**
+   * Apply queued inputs within this tick's budget. `onLand` receives the downward speed
+   * whenever the player touches ground after being airborne (fall damage).
+   */
+  simulate(dt: number, onLand?: (impactSpeed: number) => void): void {
+    if (!this.alive) {
+      // Dead players don't move; swallow inputs but keep acking so seq numbers stay in order.
+      for (const i of this.inputQueue) this.lastSeq = Math.max(this.lastSeq, i.seq);
+      this.inputQueue.length = 0;
+      return;
+    }
     this.credit = Math.min(this.credit + 1, NETWORK.maxInputsPerTick);
     while (this.credit >= 1 && this.inputQueue.length > 0) {
       const input = this.inputQueue.shift()!;
       if (input.seq <= this.lastSeq) continue;
+      const before = this.state;
       this.state = this.motor.step(this.state, input, dt);
+      if (!before.grounded && this.state.grounded && before.vel.y < 0) onLand?.(-before.vel.y);
       this.lastSeq = input.seq;
       this.credit -= 1;
     }

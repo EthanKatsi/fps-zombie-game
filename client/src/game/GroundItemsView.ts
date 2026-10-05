@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { ITEM_CATEGORY_COLORS, getItemDef, type GroundItemNet } from '@grey/shared';
 
 const geometry = new THREE.BoxGeometry(0.32, 0.22, 0.32);
+const bagGeometry = new THREE.BoxGeometry(0.7, 0.4, 0.5);
+const bagMaterial = new THREE.MeshStandardMaterial({ color: 0x3b2f22, roughness: 0.95 });
 const materials = new Map<string, THREE.MeshStandardMaterial>();
 const materialFor = (defId: string): THREE.MeshStandardMaterial => {
   const cat = getItemDef(defId)?.category ?? 'material';
@@ -38,7 +40,8 @@ export class GroundItemsView {
         existing.net = g;
         continue;
       }
-      const mesh = new THREE.Mesh(geometry, materialFor(g.defId));
+      const isBag = g.defId === 'loot_bag';
+      const mesh = new THREE.Mesh(isBag ? bagGeometry : geometry, isBag ? bagMaterial : materialFor(g.defId));
       mesh.position.set(g.p[0], g.p[1], g.p[2]);
       mesh.rotation.y = g.rot;
       mesh.castShadow = true;
@@ -55,7 +58,8 @@ export class GroundItemsView {
       const t = this.tmp.dot(dir);
       if (t < 0 || t > maxDist) continue;
       const d2 = this.tmp.lengthSq() - t * t;
-      if (d2 > PICK_RADIUS * PICK_RADIUS) continue;
+      const r = net.defId === 'loot_bag' ? PICK_RADIUS * 1.6 : PICK_RADIUS;
+      if (d2 > r * r) continue;
       if (!best || t < best.dist) best = { item: net, dist: t };
     }
     return best;

@@ -89,6 +89,13 @@ sides move the door collider in their physics world, so prediction stays in sync
   hit point to a container box. The server repeats the ray from the player's eye and requires the first hit to
   be inside that container, which prevents looting through walls.
 
+## Survival & death (milestone 4)
+
+- `SurvivalSystem` (server) owns health, hunger, thirst and bleeding (`PlayerRecord.stats`, persisted).
+  Stamina stays inside the predicted movement state.
+- There is one damage entry point, `SurvivalSystem.damage()`. Death drops the inventory into a dynamic `loot_bag`
+  container that appears in the world as a ground entity, and the player respawns at an edge spawn after a delay.
+
 ## Networking model
 
 - **Transport**: Socket.IO over WebSocket only. JSON for now; a binary codec can replace it behind `protocol.ts`.

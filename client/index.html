@@ -28,9 +28,15 @@
       <section id="hud" class="hidden">
         <div id="crosshair"></div>
         <div id="prompt" class="hidden"><kbd>E</kbd> <span id="prompt-text"></span></div>
+        <div id="vignette"></div>
         <div id="stats">
+          <div id="bleeding" class="hidden">BLEEDING</div>
+          <div class="bar"><span class="label">HP</span><div class="track"><div id="health-fill" class="fill health"></div></div></div>
+          <div class="bar"><span class="label">FOOD</span><div class="track"><div id="hunger-fill" class="fill hunger"></div></div></div>
+          <div class="bar"><span class="label">WATER</span><div class="track"><div id="thirst-fill" class="fill thirst"></div></div></div>
           <div class="bar"><span class="label">STA</span><div class="track"><div id="stamina-fill" class="fill stamina"></div></div></div>
         </div>
+        <div id="use-progress" class="hidden"><span id="use-label"></span><div class="track"><div id="use-fill"></div></div></div>
         <pre id="debug"></pre>
         <div id="held-name"></div>
         <div id="hotbar"></div>
@@ -62,6 +68,16 @@
         </div>
         <p class="inv-help">Drag to move · Ctrl+drag to split · Right-click to quick-move · Drag outside to drop · Tab to close</p>
         <div id="tooltip" class="hidden"></div>
+      </section>
+
+      <!-- Death screen -->
+      <section id="death" class="screen hidden">
+        <div class="death-card">
+          <h2>YOU DIED</h2>
+          <p id="death-cause"></p>
+          <p class="hint">Your belongings were left in a bag where you fell.</p>
+          <button id="respawn-btn" disabled>Respawn</button>
+        </div>
       </section>
 
       <!-- Pause / click-to-play overlay -->

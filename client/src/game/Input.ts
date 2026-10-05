@@ -44,6 +44,10 @@ export class Input {
       this.pitch = clamp(this.pitch - dy * this.sensitivity, -PITCH_LIMIT, PITCH_LIMIT);
     });
 
+    document.addEventListener('mousedown', (e) => {
+      if (this.locked) this.pressed.add(`Mouse${e.button}`);
+    });
+
     document.addEventListener(
       'wheel',
       (e) => {

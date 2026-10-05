@@ -70,6 +70,21 @@ export class ContainerSystem {
     return this.containers.get(key);
   }
 
+  /** A container that isn't map furniture (death bag, later storage chests). */
+  addDynamic(key: string, kind: ContainerKind, title: string, pos: Vec3, slots: Slots): WorldContainer {
+    const c: WorldContainer = { key, kind, title, pos: { ...pos }, spawn: null, lootTable: null, slots, respawnAt: Infinity, viewers: new Set() };
+    this.containers.set(key, c);
+    return c;
+  }
+
+  /** Remove a container, closing it for anyone looking inside. */
+  remove(key: string): void {
+    const c = this.containers.get(key);
+    if (!c) return;
+    for (const v of [...c.viewers]) this.close(v, true);
+    this.containers.delete(key);
+  }
+
   open(p: ServerPlayer, c: WorldContainer): void {
     this.close(p);
     p.openContainer = c;

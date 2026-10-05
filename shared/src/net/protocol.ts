@@ -1,10 +1,11 @@
 import type { PlayerId } from '../types/common';
 import type { ContainerKind, Inventory, InventoryOp } from '../types/inventory';
 import type { ItemStack } from '../types/item';
+import type { SurvivalStats } from '../types/player';
 import type { MoveInput, MoveState } from '../sim/movement';
 
 /** Bump when the wire format changes; server rejects mismatched clients. */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 // ---------- Client -> Server ----------
 
@@ -46,6 +47,20 @@ export interface JoinAccepted {
   openDoors: number[];
   players: PlayerInfo[];
   inventory: Inventory;
+  stats: NetStats;
+}
+
+/** Survival stats as sent to the owning client (stamina travels in MoveState instead). */
+export type NetStats = Omit<SurvivalStats, 'stamina'>;
+
+export type DeathCause = 'starvation' | 'dehydration' | 'bleeding' | 'fall' | 'player' | 'zombie' | 'unknown';
+
+export interface DeathInfo {
+  cause: DeathCause;
+  /** Killer's name for PvP deaths. */
+  killer: string | null;
+  /** Milliseconds until the respawn button unlocks. */
+  respawnInMs: number;
 }
 
 /** Things a player can use by looking at them and pressing E. */
@@ -58,7 +73,10 @@ export type InteractRequest =
 /** An item lying in the world. */
 export interface GroundItemNet {
   id: string;
+  /** Item definition id, or 'loot_bag' for a death bag (a container you search). */
   defId: string;
+  /** Death bags only: "<name>'s bag". */
+  title?: string;
   qty: number;
   p: [number, number, number];
   /** Visual yaw only. */
@@ -104,6 +122,14 @@ export interface ServerToClientEvents {
   groundItems: (msg: { add: GroundItemNet[]; remove: string[] }) => void;
   /** Short feedback message ("Too heavy", "Inventory full"). */
   notice: (msg: { text: string }) => void;
+  /** Own survival stats, sent when they change. */
+  stats: (s: NetStats) => void;
+  damaged: (msg: { amount: number; cause: DeathCause }) => void;
+  died: (info: DeathInfo) => void;
+  respawned: (msg: { state: MoveState; inventory: Inventory; stats: NetStats }) => void;
+  /** Eating / bandaging etc. in progress. */
+  useStarted: (msg: { defId: string; durationMs: number }) => void;
+  useEnded: (msg: { completed: boolean }) => void;
 }
 
 export interface ClientToServerEvents {
@@ -114,4 +140,6 @@ export interface ClientToServerEvents {
   interact: (req: InteractRequest) => void;
   invOp: (op: InventoryOp) => void;
   closeContainer: () => void;
+  respawn: () => void;
+  cancelUse: () => void;
 }

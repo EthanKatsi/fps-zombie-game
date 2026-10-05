@@ -27,6 +27,7 @@ import { RemotePlayers } from './RemotePlayers';
 import { DoorRenderer, MapRenderer } from './MapRenderer';
 import { GroundItemsView } from './GroundItemsView';
 import { InventoryUI } from '../ui/InventoryUI';
+import { SurvivalHud } from '../ui/SurvivalHud';
 
 export interface GameUi {
   setPaused(paused: boolean): void;
@@ -54,6 +55,8 @@ export class Game {
   private readonly containerIndex: ContainerIndex;
   private readonly groundItems: GroundItemsView;
   private readonly inventoryUI: InventoryUI;
+  private readonly hud = new SurvivalHud();
+  private dead = false;
   private readonly rayDir = new THREE.Vector3();
   private target: Target = null;
   private mapMismatch = false;
@@ -126,18 +129,20 @@ export class Game {
 
     // --- items UI (pure view; every change goes through the server) ---
     this.inventoryUI = new InventoryUI({
+      use: (slot: number) => conn.socket.emit('invOp', { op: 'use', slot }),
       move: (from: SlotRef, to: SlotRef, qty?: number) => conn.socket.emit('invOp', { op: 'move', from, to, qty }),
       drop: (from: SlotRef, qty?: number) => conn.socket.emit('invOp', { op: 'drop', from, qty }),
       craft: (recipeId: string) => conn.socket.emit('invOp', { op: 'craft', recipeId }),
     });
     this.inventoryUI.setInventory(join.inventory);
     this.inventoryUI.setActive(join.inventory.activeHotbar);
+    this.hud.setStats(join.stats);
     window.addEventListener('keydown', this.onUiKey);
 
     // --- players ---
     this.input = new Input(this.renderer.domElement);
     // Unlocking the mouse for the inventory screen is not a pause.
-    this.input.onLockChange = (locked) => this.ui.setPaused(!locked && !this.inventoryUI.isOpen);
+    this.input.onLockChange = (locked) => this.ui.setPaused(!locked && !this.inventoryUI.isOpen && !this.dead);
     this.local = new LocalPlayer(R, this.world, join.state, this.input);
     this.remotes = new RemotePlayers(this.scene, join.playerId);
     for (const p of join.players) this.remotes.setName(p.id, p.username);
@@ -147,7 +152,7 @@ export class Game {
     const s = conn.socket;
     s.on('snapshot', (snap) => {
       conn.observeServerTime(snap.serverTime + conn.rtt / 2, 0.05);
-      this.local.reconcile(snap.ack, snap.you);
+      if (!this.dead) this.local.reconcile(snap.ack, snap.you);
       this.remotes.onSnapshot(snap.players, snap.serverTime);
     });
     s.on('playerJoined', (p) => {
@@ -174,6 +179,28 @@ export class Game {
     });
     s.on('groundItems', (msg) => this.groundItems.apply(msg));
     s.on('notice', ({ text }) => this.ui.toast(text));
+    s.on('stats', (st) => this.hud.setStats(st));
+    s.on('damaged', ({ amount }) => this.hud.hit(amount));
+    s.on('useStarted', ({ defId, durationMs }) => this.hud.startUse(getItemDef(defId)?.name ?? defId, durationMs));
+    s.on('useEnded', () => this.hud.endUse());
+    s.on('died', (info) => {
+      this.dead = true;
+      if (this.inventoryUI.isOpen) this.closeInventory(false);
+      this.ui.setPrompt(null);
+      this.ui.setPaused(false);
+      if (document.pointerLockElement) document.exitPointerLock();
+      this.hud.showDeath(info, () => conn.socket.emit('respawn'));
+    });
+    s.on('respawned', ({ state, inventory, stats }) => {
+      this.dead = false;
+      this.local.resetTo(state);
+      this.inventoryUI.setInventory(inventory);
+      this.hud.setStats(stats);
+      this.hud.hideDeath();
+      this.input.requestLock();
+      // If the browser refuses the lock (no recent click), fall back to "click to resume".
+      window.setTimeout(() => this.ui.setPaused(!this.input.locked), 300);
+    });
 
     window.addEventListener('resize', this.onResize);
     this.renderer.domElement.addEventListener('click', () => this.input.requestLock());
@@ -190,6 +217,7 @@ export class Game {
   private closeInventory(relock: boolean): void {
     if (this.inventoryUI.openContainerKey) this.conn.socket.emit('closeContainer');
     this.inventoryUI.close();
+    this.hud.hideDeath();
     if (relock) this.input.requestLock();
     else this.ui.setPaused(!this.input.locked);
   }
@@ -197,7 +225,7 @@ export class Game {
   /** Keys while the inventory screen is open (pointer unlocked, so Input ignores them). */
   private onUiKey = (e: KeyboardEvent) => {
     if (!this.inventoryUI.isOpen) return;
-    if (e.code === 'Tab' || e.code === 'KeyE' || e.code === 'KeyI') {
+    if (e.code === 'Tab' || e.code === 'KeyI' || (e.code === 'KeyE' && this.inventoryUI.openContainerKey)) {
       e.preventDefault();
       this.closeInventory(true);
     } else if (e.code === 'Escape') {
@@ -219,8 +247,13 @@ export class Game {
       this.inventoryUI.setActive(active);
       this.conn.socket.emit('invOp', { op: 'select', hotbar: active });
     }
-    if (this.input.consumePress('KeyQ') && this.inventoryUI.inventory?.slots[active]) {
+    const held = this.inventoryUI.inventory?.slots[active];
+    if (this.input.consumePress('KeyQ') && held) {
       this.conn.socket.emit('invOp', { op: 'drop', from: { owner: 'self', index: active } });
+    }
+    // Left click with a consumable in hand: eat / drink / bandage.
+    if (this.input.consumePress('Mouse0') && held && getItemDef(held.defId)?.consume && !this.hud.using) {
+      this.conn.socket.emit('invOp', { op: 'use', slot: active });
     }
   }
 
@@ -245,13 +278,14 @@ export class Game {
     this.accumulator += dt;
     const batch: MoveInput[] = [];
     while (this.accumulator >= TICK_DT) {
-      batch.push(this.local.fixedUpdate());
+      if (!this.dead) batch.push(this.local.fixedUpdate());
       this.accumulator -= TICK_DT;
     }
     if (batch.length) this.conn.socket.emit('input', batch);
 
     this.local.updateCamera(this.camera, this.accumulator / TICK_DT, dt);
-    if (!this.inventoryUI.isOpen) {
+    this.hud.update(dt);
+    if (!this.inventoryUI.isOpen && !this.dead) {
       this.updateHotbarInput();
       this.updateInteraction();
     }
@@ -278,9 +312,13 @@ export class Game {
     this.target = null;
     const item = this.groundItems.pick(o, d, hitDist + 0.15);
     if (item) {
-      const name = getItemDef(item.item.defId)?.name ?? item.item.defId;
       this.target = { kind: 'pickup', id: item.item.id };
-      prompt = `Pick up ${name}${item.item.qty > 1 ? ` ×${item.item.qty}` : ''}`;
+      if (item.item.defId === 'loot_bag') {
+        prompt = `Search ${item.item.title ?? 'Bag'}`;
+      } else {
+        const name = getItemDef(item.item.defId)?.name ?? item.item.defId;
+        prompt = `Pick up ${name}${item.item.qty > 1 ? ` ×${item.item.qty}` : ''}`;
+      }
     } else if (hit) {
       const doorId = this.doorColliders.byHandle.get(hit.collider.handle);
       if (doorId !== undefined) {
@@ -337,6 +375,7 @@ export class Game {
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('keydown', this.onUiKey);
     this.inventoryUI.close();
+    this.hud.hideDeath();
     this.renderer.dispose();
     this.renderer.domElement.remove();
     this.world.free();
