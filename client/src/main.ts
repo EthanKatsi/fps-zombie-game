@@ -2,6 +2,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import './ui/style.css';
 import { Connection } from './net/Connection';
 import { Game } from './game/Game';
+import { bindSettingsForm } from './settings';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -70,4 +71,6 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
-pause.addEventListener('click', () => game?.resume());
+bindSettingsForm($('menu-settings'));
+bindSettingsForm($('pause-settings'));
+$('resume-btn').addEventListener('click', () => game?.resume());

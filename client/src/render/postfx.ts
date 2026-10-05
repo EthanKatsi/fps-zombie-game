@@ -6,7 +6,8 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 
-export type GraphicsQuality = 'high' | 'medium' | 'low';
+import type { GraphicsQuality } from '../settings';
+export type { GraphicsQuality };
 
 /** Final colour grade in display space: desaturated, teal shadows / warm highlights, grain, vignette. */
 const GradeShader = {
@@ -78,7 +79,7 @@ export class PostFX {
   setQuality(q: GraphicsQuality): void {
     this.quality = q;
     this.gtao.enabled = q === 'high';
-    this.bloom.enabled = q !== 'low';
+    this.bloom.enabled = q === 'high' || q === 'medium';
   }
 
   setSize(w: number, h: number): void {
@@ -86,7 +87,7 @@ export class PostFX {
   }
 
   render(dt: number): void {
-    if (this.quality === 'low') {
+    if (this.quality === 'low' || this.quality === 'performance') {
       this.renderer.clear();
       this.renderer.render((this.composer.passes[0] as RenderPass).scene, (this.composer.passes[0] as RenderPass).camera);
       return;

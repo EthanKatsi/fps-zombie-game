@@ -725,3 +725,45 @@ kbd {
 .kf.fade {
   opacity: 0;
 }
+
+/* ---------------------------------------------------------------- settings */
+
+.settings {
+  margin-top: 14px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+details.settings summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.settings label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings select,
+.settings input[type='range'] {
+  width: 100%;
+  background: #161613;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  padding: 6px;
+  font-size: 14px;
+}
+
+.pause-card {
+  min-width: 380px;
+}
+
+#pause {
+  cursor: default;
+}

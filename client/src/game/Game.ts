@@ -40,23 +40,21 @@ import { ZombiesView } from './ZombiesView';
 import { Viewmodel } from './weapons/Viewmodel';
 import { WeaponController } from './weapons/WeaponController';
 import { Atmosphere } from '../render/atmosphere';
-import { PostFX, type GraphicsQuality } from '../render/postfx';
+import { PostFX } from '../render/postfx';
+import { QUALITY_LABELS, QUALITY_ORDER, getSettings, onSettingsChange, updateSettings, type GraphicsQuality, type Settings } from '../settings';
 import { generateSurfaceTextures } from '../render/textures';
 import { createWorldMaterial } from '../render/worldMaterial';
 
-const QUALITY_KEY = 'grey.gfx';
-const QUALITIES: GraphicsQuality[] = ['high', 'medium', 'low'];
-const SHADOW_SIZE: Record<GraphicsQuality, number> = { high: 4096, medium: 2048, low: 1024 };
-const loadQuality = (): GraphicsQuality => {
-  try {
-    const q = localStorage.getItem(QUALITY_KEY) as GraphicsQuality | null;
-    return q && QUALITIES.includes(q) ? q : 'high';
-  } catch {
-    return 'high';
-  }
+const SHADOW_SIZE: Record<GraphicsQuality, number> = { high: 4096, medium: 2048, low: 1024, performance: 1024 };
+const PIXEL_RATIO: Record<GraphicsQuality, number> = {
+  high: Math.min(window.devicePixelRatio, 2),
+  medium: Math.min(window.devicePixelRatio, 1.5),
+  low: 1,
+  performance: 0.75,
 };
 
-const BASE_FOV = 75;
+/** Base mouse sensitivity (radians per pixel) at 1.0x. */
+const BASE_SENSITIVITY = 0.0022;
 
 const BUILDING_NAMES: Record<string, string> = {
   house: 'House',
@@ -84,7 +82,9 @@ export class Game {
   private readonly camera: THREE.PerspectiveCamera;
   private readonly atmosphere: Atmosphere;
   private readonly postfx: PostFX;
-  private quality: GraphicsQuality = loadQuality();
+  private quality: GraphicsQuality = getSettings().quality;
+  private baseFov = getSettings().fov;
+  private readonly offSettings: () => void;
   private readonly world: World;
   private readonly map: MapData;
   private readonly mapRenderer: MapRenderer;
@@ -139,15 +139,16 @@ export class Game {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
-    if (this.quality === 'low') this.renderer.setPixelRatio(1);
+    this.renderer.setPixelRatio(PIXEL_RATIO[this.quality]);
     this.renderer.autoClear = false; // world + viewmodel are drawn in two passes
     container.appendChild(this.renderer.domElement);
 
-    this.camera = new THREE.PerspectiveCamera(BASE_FOV, window.innerWidth / window.innerHeight, 0.05, RENDER.cameraFar);
+    this.camera = new THREE.PerspectiveCamera(this.baseFov, window.innerWidth / window.innerHeight, 0.05, RENDER.cameraFar);
     this.scene.add(this.camera);
     // Physical sky, hazy sun with soft shadows, sky reflections; then AO / bloom / grade.
     this.atmosphere = new Atmosphere(this.renderer, this.scene, RENDER.shadowExtent, SHADOW_SIZE[this.quality]);
     this.postfx = new PostFX(this.renderer, this.scene, this.camera, this.quality);
+    this.atmosphere.sun.castShadow = this.quality !== 'performance';
     this.viewmodel.scene.environment = this.scene.environment;
     this.viewmodel.scene.environmentIntensity = 0.8;
     // Procedural surface textures for every map piece (brick, concrete, asphalt...).
@@ -198,6 +199,8 @@ export class Game {
 
     // --- players ---
     this.input = new Input(this.renderer.domElement);
+    this.input.sensitivity = BASE_SENSITIVITY * getSettings().sensitivity;
+    this.offSettings = onSettingsChange((s) => this.applySettings(s));
     // Unlocking the mouse for the inventory screen is not a pause.
     this.input.onLockChange = (locked) => this.ui.setPaused(!locked && !this.inventoryUI.isOpen && !this.dead);
     this.local = new LocalPlayer(R, this.world, join.state, this.input);
@@ -404,22 +407,27 @@ export class Game {
     this.viewmodel.setAspect(this.camera.aspect);
   };
 
-  /** F8: cycle High / Medium / Low graphics (remembered in this browser). */
+  /** F8: cycle graphics presets (same setting as the menu / pause screen). */
   private cycleQuality(): void {
-    this.quality = QUALITIES[(QUALITIES.indexOf(this.quality) + 1) % QUALITIES.length];
-    try {
-      localStorage.setItem(QUALITY_KEY, this.quality);
-    } catch {
-      /* private mode: just don't remember */
-    }
-    this.postfx.setQuality(this.quality);
-    this.renderer.setPixelRatio(this.quality === 'low' ? 1 : Math.min(window.devicePixelRatio, 2));
+    const next = QUALITY_ORDER[(QUALITY_ORDER.indexOf(this.quality) + 1) % QUALITY_ORDER.length];
+    updateSettings({ quality: next });
+    this.ui.toast(`Graphics: ${QUALITY_LABELS[next]}`);
+  }
+
+  /** Apply settings from the menu / pause screen live. */
+  private applySettings(s: Settings): void {
+    this.input.sensitivity = BASE_SENSITIVITY * s.sensitivity;
+    this.baseFov = s.fov;
+    if (s.quality === this.quality) return;
+    this.quality = s.quality;
+    this.postfx.setQuality(s.quality);
+    this.renderer.setPixelRatio(PIXEL_RATIO[s.quality]);
     const sun = this.atmosphere.sun;
-    sun.shadow.mapSize.set(SHADOW_SIZE[this.quality], SHADOW_SIZE[this.quality]);
+    sun.castShadow = s.quality !== 'performance';
+    sun.shadow.mapSize.set(SHADOW_SIZE[s.quality], SHADOW_SIZE[s.quality]);
     sun.shadow.map?.dispose();
     sun.shadow.map = null;
     this.onResize();
-    this.ui.toast(`Graphics: ${this.quality.toUpperCase()}`);
   }
 
   private frame = (now: number) => {
@@ -484,12 +492,13 @@ export class Game {
   private updateAim(dt: number): void {
     const held = this.inventoryUI.inventory?.slots[this.inventoryUI.activeHotbar];
     const w = weaponForItem(held?.defId);
-    const target = this.weapons.aiming && !this.dead ? (w.adsFov ?? BASE_FOV) : BASE_FOV;
+    // ADS zoom keeps the weapon's magnification relative to your chosen FOV.
+    const target = this.weapons.aiming && !this.dead ? (w.adsFov ?? 75) * (this.baseFov / 75) : this.baseFov;
     if (Math.abs(this.camera.fov - target) > 0.01) {
       this.camera.fov += (target - this.camera.fov) * (1 - Math.exp(-dt * 16));
       this.camera.updateProjectionMatrix();
     }
-    this.scoped = this.cameraMode === 'first' && this.weapons.aiming && w.id === 'rifle' && this.camera.fov < (w.adsFov ?? BASE_FOV) + 6;
+    this.scoped = this.cameraMode === 'first' && this.weapons.aiming && w.id === 'rifle' && this.camera.fov < (w.adsFov ?? 75) * (this.baseFov / 75) + 6;
     this.combatHud.setScope(this.scoped);
   }
 
@@ -640,6 +649,7 @@ export class Game {
     this.running = false;
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('keydown', this.onUiKey);
+    this.offSettings();
     this.inventoryUI.close();
     this.killFeed.clear();
     this.hud.hideDeath();

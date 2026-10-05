@@ -20,6 +20,12 @@
             <button type="submit" id="join-btn">Enter the city</button>
           </form>
           <p id="menu-error" class="error"></p>
+          <details class="settings" id="menu-settings">
+            <summary>Settings</summary>
+            <label>Graphics<select data-setting="quality"></select></label>
+            <label>Mouse sensitivity <span data-out="sensitivity"></span><input type="range" data-setting="sensitivity" min="0.2" max="3" step="0.05" /></label>
+            <label>Field of view <span data-out="fov"></span><input type="range" data-setting="fov" min="60" max="100" step="1" /></label>
+          </details>
           <p class="hint">WASD move · Mouse look · Double-tap W sprint · Shift crouch · Space jump · LMB attack/use · RMB aim · R reload · V camera · E use · Tab inventory · 1-9 hotbar · Q drop · Esc pause</p>
         </div>
       </section>
@@ -87,9 +93,15 @@
 
       <!-- Pause / click-to-play overlay -->
       <section id="pause" class="screen hidden">
-        <div class="menu-card">
+        <div class="menu-card pause-card">
           <h2>PAUSED</h2>
-          <p>Click to resume</p>
+          <button id="resume-btn">Resume</button>
+          <div class="settings" id="pause-settings">
+            <label>Graphics<select data-setting="quality"></select></label>
+            <label>Mouse sensitivity <span data-out="sensitivity"></span><input type="range" data-setting="sensitivity" min="0.2" max="3" step="0.05" /></label>
+            <label>Field of view <span data-out="fov"></span><input type="range" data-setting="fov" min="60" max="100" step="1" /></label>
+          </div>
+          <p class="hint">"Performance" turns off shadows and effects for slower computers. F8 cycles it in game.</p>
         </div>
       </section>
     </div>
