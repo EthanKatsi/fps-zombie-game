@@ -1,4 +1,4 @@
-import { SURVIVAL, type DeathCause, type DeathInfo, type NetStats } from '@grey/shared';
+import { SURVIVAL, getItemDef, type DeathCause, type DeathInfo, type NetStats } from '@grey/shared';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -10,6 +10,14 @@ const DEATH_TEXT: Record<DeathCause, (killer: string | null) => string> = {
   player: (k) => `Killed by ${k ?? 'another survivor'}.`,
   zombie: () => 'The dead got you.',
   unknown: () => 'You died.',
+};
+
+/** "a Hunting Rifle" / "their fists" for death and kill feed text. */
+export const weaponName = (weaponId: string): string => {
+  if (weaponId === 'fists') return 'their fists';
+  const item = getItemDef(weaponId);
+  if (!item) return weaponId;
+  return `${/^[aeiou]/i.test(item.name) ? 'an' : 'a'} ${item.name}`;
 };
 
 /** Health / food / water bars, hit flash, item-use progress and the death screen. */
@@ -86,7 +94,14 @@ export class SurvivalHud {
   showDeath(info: DeathInfo, onRespawn: () => void): void {
     this.endUse();
     this.onRespawn = onRespawn;
-    $('death-cause').textContent = DEATH_TEXT[info.cause](info.killer);
+    let text = DEATH_TEXT[info.cause](info.killer);
+    if (info.cause === 'player' && info.killer) {
+      const weapon = info.weapon ? weaponName(info.weapon) : null;
+      text = `Killed by ${info.killer}${weapon ? ` with ${weapon}` : ''}${info.headshot ? ' (headshot)' : ''}${
+        info.distance !== undefined ? ` from ${info.distance} m` : ''
+      }.`;
+    }
+    $('death-cause').textContent = text;
     this.death.classList.remove('hidden');
     const unlockAt = performance.now() + info.respawnInMs;
     this.respawnBtn.disabled = true;

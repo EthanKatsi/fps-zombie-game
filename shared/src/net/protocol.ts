@@ -5,7 +5,7 @@ import type { SurvivalStats } from '../types/player';
 import type { MoveInput, MoveState } from '../sim/movement';
 
 /** Bump when the wire format changes; server rejects mismatched clients. */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 
 // ---------- Client -> Server ----------
 
@@ -60,6 +60,16 @@ export interface JoinAccepted {
 export interface AttackRequest {
   /** Strictly increasing by 1 per attack; seeds the spread. */
   seq: number;
+  /**
+   * Seq of the last movement input sent before this attack. The server applies the attack
+   * right after that input, so it fires from exactly where the shooter's screen was.
+   */
+  afterSeq: number;
+  /**
+   * Server time the shooter was seeing other entities at (their interpolated view).
+   * Used for lag compensation: targets are rewound to this moment.
+   */
+  viewTime: number;
   /** Camera forward at the moment of the shot (unit vector). */
   dir: [number, number, number];
   /** Aiming down sights. */
@@ -89,8 +99,22 @@ export interface DeathInfo {
   cause: DeathCause;
   /** Killer's name for PvP deaths. */
   killer: string | null;
+  /** Weapon id the killer used (PvP). */
+  weapon?: string;
+  headshot?: boolean;
+  /** Distance to the killer in metres (PvP). */
+  distance?: number;
   /** Milliseconds until the respawn button unlocks. */
   respawnInMs: number;
+}
+
+/** Broadcast to everyone when a player dies. */
+export interface KillFeedEntry {
+  victim: string;
+  killer: string | null;
+  cause: DeathCause;
+  weapon?: string;
+  headshot?: boolean;
 }
 
 /** Things a player can use by looking at them and pressing E. */
@@ -183,6 +207,7 @@ export interface ServerToClientEvents {
   projectile: (msg: { id: string; owner: PlayerId; p: [number, number, number]; v: [number, number, number] }) => void;
   projectileEnd: (msg: { id: string; p: [number, number, number]; hit: 0 | 1 | 2 }) => void;
   dummyState: (msg: { id: number; down: boolean }) => void;
+  killFeed: (e: KillFeedEntry) => void;
 }
 
 export interface ClientToServerEvents {

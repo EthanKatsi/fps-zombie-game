@@ -79,9 +79,12 @@ export class GameServer {
     this.doors = new DoorColliders(R, this.world, this.map.doors);
     this.world.step(); // populate the broad-phase so scene queries see the map
     this.items = new InventorySystem(R, this.world, this.map, () => this.players.values());
-    this.survival = new SurvivalSystem(this.items, () => this.spawnPoint());
+    this.survival = new SurvivalSystem(this.items, () => this.spawnPoint(), (e) => this.io.emit('killFeed', e));
     this.dummies = new DummySystem(this.map.dummies, io);
-    this.weapons = new WeaponSystem(R, this.world, () => this.players.values(), this.survival, this.items, this.dummies, this.noise, () => this.zombies);
+    this.weapons = new WeaponSystem(
+      R, this.world, () => this.players.values(), this.survival, this.items, this.dummies, this.noise,
+      () => this.zombies, () => this.serverTime(),
+    );
     console.log(`[game] world built in ${Math.round(performance.now() - t0)} ms`);
     io.on('connection', (s) => this.onConnection(s));
   }
@@ -318,8 +321,15 @@ export class GameServer {
       this.world.step(); // refresh the broad-phase so moved door colliders are seen
       this.doorsDirty = false;
     }
+    const st = this.serverTime();
     for (const p of this.players.values()) {
-      p.simulate(TICK_DT, (impact) => this.survival.onLand(p, impact));
+      p.simulate(
+        TICK_DT,
+        (impact) => this.survival.onLand(p, impact),
+        () => this.weapons.flushPending(p),
+      );
+      this.weapons.flushPending(p); // drop attacks that waited too long
+      if (p.alive) p.history.push(st, p.state.pos, p.state.crouching);
       if (p.alive && p.state.pos.y < -30) {
         // Fell out of the world.
         const spawn = this.randomSpawn();
@@ -331,7 +341,7 @@ export class GameServer {
     this.survival.update(this.players.values(), TICK_DT, now);
     this.weapons.update(this.players.values(), now, TICK_DT);
     this.dummies.update(now);
-    this.zombies?.update(now, TICK_DT);
+    this.zombies?.update(now, TICK_DT, this.serverTime());
     this.noise.prune(now);
     if (this.tick % 10 === 0) this.items.update([...this.players.values()], now);
     if (this.tick % 15 === 0) this.survival.flushStats(this.players.values());

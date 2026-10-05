@@ -2,6 +2,7 @@ import {
   Buttons,
   CharacterMotor,
   NETWORK,
+  PVP,
   createMoveState,
   normalizeInventory,
   sanitizeInput,
@@ -11,8 +12,10 @@ import {
   type PlayerRecord,
   type Rapier,
   type Vec3,
+  type AttackRequest,
   type WeaponDef,
 } from '@grey/shared';
+import { PositionHistory } from './PositionHistory';
 import type { World } from '@dimforge/rapier3d-compat';
 import type { GameSocket } from './types';
 import type { WorldContainer } from './ContainerSystem';
@@ -40,6 +43,12 @@ export class ServerPlayer {
   aiming = false;
   /** Random salt for deterministic shot spread, shared with this client at join. */
   readonly shotSalt = (Math.random() * 0x7fffffff) | 0;
+  /** Recent positions on the server clock, for lag-compensated hit tests. */
+  readonly history = new PositionHistory(PVP.historyMs);
+  /** Immune to other players until then (performance.now ms); attacking ends it early. */
+  protectedUntil = performance.now() + PVP.spawnProtectionSec * 1000;
+  /** Attacks waiting for the inputs that preceded them to be simulated. */
+  pendingAttacks: { req: AttackRequest; arrivedAt: number }[] = [];
   combat: {
     lastSeq: number;
     lastAttackAt: number;
@@ -87,7 +96,7 @@ export class ServerPlayer {
    * Apply queued inputs within this tick's budget. `onLand` receives the downward speed
    * whenever the player touches ground after being airborne (fall damage).
    */
-  simulate(dt: number, onLand?: (impactSpeed: number) => void): void {
+  simulate(dt: number, onLand?: (impactSpeed: number) => void, onApplied?: () => void): void {
     if (!this.alive) {
       // Dead players don't move; swallow inputs but keep acking so seq numbers stay in order.
       for (const i of this.inputQueue) this.lastSeq = Math.max(this.lastSeq, i.seq);
@@ -104,10 +113,12 @@ export class ServerPlayer {
       if (!before.grounded && this.state.grounded && before.vel.y < 0) onLand?.(-before.vel.y);
       this.lastSeq = input.seq;
       this.credit -= 1;
+      onApplied?.();
     }
   }
 
   teleport(pos: Vec3, yaw = this.state.yaw): void {
+    this.history.clear();
     this.state = createMoveState(pos, yaw);
     this.motor.syncCollider(this.state);
   }

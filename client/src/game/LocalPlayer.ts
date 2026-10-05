@@ -96,6 +96,11 @@ export class LocalPlayer {
     camera.rotation.set(this.input.pitch, this.input.yaw, 0, 'YXZ');
   }
 
+  /** Seq of the most recent input sent (attacks reference it for lag compensation). */
+  get lastInputSeq(): number {
+    return this.seq;
+  }
+
   get pendingCount(): number {
     return this.pending.length;
   }

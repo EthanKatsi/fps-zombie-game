@@ -2,6 +2,7 @@ import type { World } from '@dimforge/rapier3d-compat';
 import {
   COMBAT,
   PLAYER_GROUPS,
+  PVP,
   aimDirection,
   countItem,
   eyeHeight,
@@ -73,6 +74,8 @@ export class WeaponSystem {
     private readonly dummies: DummySystem,
     private readonly noise: NoiseSystem,
     private readonly zombies: () => ZombieSystem | null,
+    /** Server clock (same timeline as snapshots / AttackRequest.viewTime). */
+    private readonly serverTime: () => number = () => performance.now(),
   ) {}
 
   /** Headshot multiplier: zombies have their own (headshots are what kills the dead). */
@@ -93,13 +96,19 @@ export class WeaponSystem {
     return { slot, item: p.inventory.slots[slot] ?? null };
   }
 
-  /** First thing along a ray: the world, a player (not `ignore`) or a dummy. */
-  private castRay(o: Vec3, d: Vec3, maxT: number, ignore: ServerPlayer | null): RayResult {
+  /**
+   * First thing along a ray: the world, a player (not `ignore`), a dummy or a zombie.
+   * With `rewindTo` (server time), players and zombies are tested where they were at that
+   * moment - i.e. where the shooter saw them (lag compensation). The world is not rewound.
+   */
+  private castRay(o: Vec3, d: Vec3, maxT: number, ignore: ServerPlayer | null, rewindTo?: number): RayResult {
     const hit = this.world.castRay(new this.R.Ray(o, d), maxT, true, undefined, PLAYER_GROUPS);
     let best: RayResult = { t: hit ? hit.timeOfImpact : maxT, target: null, head: false, world: hit !== null };
     for (const p of this.players()) {
       if (p === ignore || !p.alive) continue;
-      const r = rayHitboxes(o, d, best.t, humanoidHitboxes(p.state.pos, p.state.crouching));
+      const past = rewindTo !== undefined ? p.history.sample(rewindTo) : null;
+      const box = past ? humanoidHitboxes(past.pos, past.crouch) : humanoidHitboxes(p.state.pos, p.state.crouching);
+      const r = rayHitboxes(o, d, best.t, box);
       if (r) best = { t: r.t, target: { kind: 'player', p }, head: r.head, world: false };
     }
     for (const dm of this.dummies.spawns) {
@@ -109,7 +118,7 @@ export class WeaponSystem {
     }
     const zs = this.zombies();
     if (zs) {
-      for (const z of zs.targets()) {
+      for (const z of zs.targets(rewindTo)) {
         const r = rayHitboxes(o, d, best.t, z.hitboxes);
         if (r) best = { t: r.t, target: { kind: 'zombie', id: z.id }, head: r.head, world: false };
       }
@@ -124,8 +133,9 @@ export class WeaponSystem {
     if (target.kind === 'player') {
       kind = 'player';
       const victim = target.p;
+      if (!PVP.enabled || now < victim.protectedUntil) return; // spawn protection: no damage, no marker
       if (w.bleedChance && Math.random() < w.bleedChance) victim.record.stats.bleeding = true;
-      this.survival.damage(victim, damage, 'player', attacker, false, attacker.state.pos);
+      this.survival.damage(victim, damage, 'player', attacker, false, attacker.state.pos, { weapon: w.id, headshot: head });
       kill = !victim.alive;
     } else if (target.kind === 'zombie') {
       kind = 'zombie';
@@ -158,12 +168,43 @@ export class WeaponSystem {
 
   // ------------------------------------------------------------------ requests
 
+  /**
+   * An attack arrives. It's applied right after the movement input that preceded it on the
+   * client (so it fires from exactly where the shooter was), deferring if needed.
+   */
   attack(p: ServerPlayer, req: AttackRequest): void {
     if (!p.alive || !req || !Number.isInteger(req.seq)) return;
     const c = p.combat;
     // Shots are numbered strictly +1: keeps spread seeds in sync and stops seed shopping.
     if (req.seq !== c.lastSeq + 1) return;
     c.lastSeq = req.seq;
+    const after = Number.isInteger(req.afterSeq) ? req.afterSeq : -1;
+    if (after > p.lastSeq) {
+      if (p.pendingAttacks.length < 8) p.pendingAttacks.push({ req, arrivedAt: performance.now() });
+      return;
+    }
+    this.execute(p, req);
+  }
+
+  /** Called after each simulated input: run attacks whose preceding input is now applied. */
+  flushPending(p: ServerPlayer): void {
+    if (!p.pendingAttacks.length) return;
+    const now = performance.now();
+    while (p.pendingAttacks.length) {
+      const next = p.pendingAttacks[0];
+      if (now - next.arrivedAt > PVP.pendingAttackTimeoutMs) {
+        p.pendingAttacks.shift();
+        continue;
+      }
+      if (next.req.afterSeq > p.lastSeq) break;
+      p.pendingAttacks.shift();
+      this.execute(p, next.req);
+    }
+  }
+
+  private execute(p: ServerPlayer, req: AttackRequest): void {
+    if (!p.alive) return;
+    const c = p.combat;
     const [dx, dy, dz] = Array.isArray(req.dir) ? req.dir : [NaN, NaN, NaN];
     const len = Math.hypot(dx, dy, dz);
     if (!Number.isFinite(len) || len < 0.5 || len > 1.5) return;
@@ -178,6 +219,13 @@ export class WeaponSystem {
     if (item?.durability !== undefined && item.durability <= 0) return;
     const interval = 1000 / w.fireRate;
     if (now - c.lastAttackAt < interval * COMBAT.fireRateTolerance) return;
+
+    // Attacking ends spawn protection.
+    p.protectedUntil = 0;
+    // Lag compensation window: what the shooter saw, but not too far in the past.
+    const st = this.serverTime();
+    const vt = Number(req.viewTime);
+    const rewindTo = Number.isFinite(vt) ? Math.min(st, Math.max(st - PVP.maxRewindMs, vt)) : undefined;
 
     if (w.kind === 'melee') {
       const cost = w.staminaCost ?? 0;
@@ -212,7 +260,7 @@ export class WeaponSystem {
       const ends: ShotEnd[] = [];
       const dealt = new Map<string, { target: Target; dmg: number; head: boolean }>();
       for (const d of dirs) {
-        const r = this.castRay(eye, d, w.range, p);
+        const r = this.castRay(eye, d, w.range, p, rewindTo);
         const end = add(eye, d, r.t);
         ends.push([...v3(end), r.target ? 2 : r.world ? 1 : 0]);
         if (!r.target) continue;

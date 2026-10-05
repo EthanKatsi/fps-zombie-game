@@ -32,6 +32,7 @@ import { GroundItemsView } from './GroundItemsView';
 import { InventoryUI } from '../ui/InventoryUI';
 import { SurvivalHud } from '../ui/SurvivalHud';
 import { CombatHud } from '../ui/CombatHud';
+import { KillFeed } from '../ui/KillFeed';
 import { Effects } from './Effects';
 import { DummiesView } from './DummiesView';
 import { ZombiesView } from './ZombiesView';
@@ -83,6 +84,7 @@ export class Game {
   private readonly weapons: WeaponController;
   private readonly dummies: DummiesView;
   private readonly zombies: ZombiesView;
+  private readonly killFeed: KillFeed;
   private dead = false;
   private readonly tmpV = new THREE.Vector3();
   private readonly rayDir = new THREE.Vector3();
@@ -158,6 +160,7 @@ export class Game {
     this.effects = new Effects(this.scene);
     this.dummies = new DummiesView(this.scene, this.map.dummies, join.dummiesDown);
     this.zombies = new ZombiesView(this.scene);
+    this.killFeed = new KillFeed(join.username);
     this.viewmodel.setAspect(window.innerWidth / window.innerHeight);
 
     // --- items UI (pure view; every change goes through the server) ---
@@ -272,6 +275,7 @@ export class Game {
     );
     s.on('projectileEnd', ({ id, p, hit }) => this.effects.endBolt(id, new THREE.Vector3(...p), hit));
     s.on('dummyState', ({ id, down }) => this.dummies.setDown(id, down));
+    s.on('killFeed', (e) => this.killFeed.push(e));
     s.on('died', (info) => {
       this.dead = true;
       if (this.inventoryUI.isOpen) this.closeInventory(false);
@@ -506,6 +510,7 @@ export class Game {
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('keydown', this.onUiKey);
     this.inventoryUI.close();
+    this.killFeed.clear();
     this.hud.hideDeath();
     this.renderer.dispose();
     this.renderer.domElement.remove();

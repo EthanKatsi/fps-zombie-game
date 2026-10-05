@@ -98,7 +98,7 @@ let seqs = new Map<ServerPlayer, number>();
 const attack = (c: C, p: ServerPlayer, dir: [number, number, number], aim = false) => {
   const seq = (seqs.get(p) ?? -1) + 1;
   seqs.set(p, seq);
-  c.emit('attack', { seq, dir, aim });
+  c.emit('attack', { seq, dir, aim, afterSeq: -1, viewTime: Infinity });
 };
 
 // Dummy 2 of the test map stands at (0, 0, -14).
@@ -129,7 +129,7 @@ test('fire rate and shot sequence are enforced', async () => {
   assert.equal(gun.loadedAmmo, 4, 'second shot rejected by fire rate');
   // Skipping sequence numbers is rejected outright.
   await sleep(1300);
-  c.emit('attack', { seq: 99, dir: aimAt(p, { x: 3, y: 1, z: -14 }), aim: false });
+  c.emit('attack', { seq: 99, dir: aimAt(p, { x: 3, y: 1, z: -14 }), aim: false, afterSeq: -1, viewTime: Infinity });
   await sleep(200);
   assert.equal(gun.loadedAmmo, 4);
 });
@@ -162,6 +162,7 @@ test('switching weapons cancels a reload', async () => {
 test('melee costs stamina, lands after the windup and hurts players', async () => {
   const a = await connect('brawler');
   const v = await connect('victim');
+  v.p.protectedUntil = 0; // no spawn protection for this test
   // Away from spawn points and the other tests' players (players can overlap; a bystander in
   // the swing would take the hit instead).
   a.p.teleport({ x: -8, y: 0, z: -3 }, 0);
@@ -183,6 +184,7 @@ test('melee costs stamina, lands after the windup and hurts players', async () =
 test('headshots multiply damage and kills are confirmed with the killer name', async () => {
   const a = await connect('marksman');
   const v = await connect('target');
+  v.p.protectedUntil = 0;
   a.p.teleport({ x: -3, y: 0, z: 0 });
   v.p.teleport({ x: -3, y: 0, z: -3 });
   await Promise.all([settle(a.c), settle(v.c)]);

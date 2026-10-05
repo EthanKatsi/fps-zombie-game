@@ -1,5 +1,6 @@
 import {
   INVENTORY,
+  PVP,
   SURVIVAL,
   createMoveState,
   getItemDef,
@@ -7,6 +8,7 @@ import {
   makeItem,
   type DeathCause,
   type Inventory,
+  type KillFeedEntry,
   type NetStats,
   type Vec3,
 } from '@grey/shared';
@@ -46,6 +48,7 @@ export class SurvivalSystem {
   constructor(
     private readonly items: InventorySystem,
     private readonly randomSpawn: () => { pos: Vec3; yaw: number },
+    private readonly broadcastKill: (e: KillFeedEntry) => void = () => {},
   ) {}
 
   /** Per-tick update. */
@@ -98,6 +101,7 @@ export class SurvivalSystem {
     attacker: ServerPlayer | null = null,
     quiet = false,
     from?: Vec3,
+    info: { weapon?: string; headshot?: boolean } = {},
   ): void {
     if (!p.alive || !(amount > 0)) return;
     const s = p.record.stats;
@@ -109,7 +113,7 @@ export class SurvivalSystem {
         ...(from ? { from: [from.x, from.y, from.z] as [number, number, number] } : {}),
       });
     }
-    if (s.health <= 0) this.kill(p, cause, attacker);
+    if (s.health <= 0) this.kill(p, cause, attacker, info);
   }
 
   /** Landing after a fall. */
@@ -121,7 +125,7 @@ export class SurvivalSystem {
     this.damage(p, dmg, 'fall');
   }
 
-  kill(p: ServerPlayer, cause: DeathCause, attacker: ServerPlayer | null): void {
+  kill(p: ServerPlayer, cause: DeathCause, attacker: ServerPlayer | null, info: { weapon?: string; headshot?: boolean } = {}): void {
     if (!p.alive) return;
     const now = performance.now();
     p.alive = false;
@@ -136,10 +140,20 @@ export class SurvivalSystem {
     this.items.dropDeathBag(p, now);
     this.items.sendInventory(p);
     this.sendStats(p, true);
+    const distance = attacker
+      ? Math.round(Math.hypot(attacker.state.pos.x - p.state.pos.x, attacker.state.pos.y - p.state.pos.y, attacker.state.pos.z - p.state.pos.z))
+      : undefined;
     p.socket.emit('died', {
       cause,
       killer: attacker?.username ?? null,
+      ...(attacker ? { weapon: info.weapon, headshot: info.headshot, distance } : {}),
       respawnInMs: SURVIVAL.respawn.delaySec * 1000,
+    });
+    this.broadcastKill({
+      victim: p.username,
+      killer: attacker?.username ?? null,
+      cause,
+      ...(attacker ? { weapon: info.weapon, headshot: info.headshot } : {}),
     });
   }
 
@@ -163,6 +177,10 @@ export class SurvivalSystem {
     p.motor.syncCollider(p.state);
     p.inventory.slots = p.inventory.slots.map(() => null);
     giveStartingKit(p);
+    p.history.clear();
+    p.pendingAttacks = [];
+    p.protectedUntil = performance.now() + PVP.spawnProtectionSec * 1000;
+    p.socket.emit('notice', { text: `Spawn protection: ${PVP.spawnProtectionSec}s (ends if you attack)` });
     this.sendStats(p, true);
   }
 

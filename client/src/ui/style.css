@@ -681,3 +681,47 @@ kbd {
   transform-origin: center;
   filter: blur(1px);
 }
+
+/* ---------------------------------------------------------------- kill feed */
+
+#killfeed {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.kf {
+  padding: 4px 10px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 13px;
+  white-space: nowrap;
+  transition: opacity 0.6s;
+}
+
+.kf.me {
+  border-color: rgba(224, 87, 79, 0.8);
+}
+
+.kf .who {
+  font-weight: 700;
+}
+
+.kf .how {
+  color: var(--muted);
+  margin: 0 6px;
+}
+
+.kf .hs {
+  color: #e0574f;
+  margin-left: 4px;
+}
+
+.kf.fade {
+  opacity: 0;
+}

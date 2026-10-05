@@ -21,6 +21,7 @@ import {
   type ZombieTypeDef,
 } from '@grey/shared';
 import { makeUid } from './ContainerSystem';
+import { PositionHistory } from './PositionHistory';
 import type { InventorySystem } from './InventorySystem';
 import type { Navigation } from './Navigation';
 import type { NoiseSystem } from './NoiseSystem';
@@ -50,6 +51,8 @@ interface ZombieEntity {
   aloneSince: number;
   /** Noises up to this time have been considered (each zombie thinks on its own schedule). */
   heardUpTo: number;
+  /** Recent positions (server clock) for lag-compensated shots. */
+  history: PositionHistory;
 }
 
 const dist2 = (a: Vec3, b: Vec3) => (a.x - b.x) ** 2 + (a.z - b.z) ** 2;
@@ -138,6 +141,7 @@ export class ZombieSystem {
       deadAt: 0,
       aloneSince: now,
       heardUpTo: now,
+      history: new PositionHistory(1000),
     };
     this.zombies.set(z.id, z);
     return z.id;
@@ -362,7 +366,7 @@ export class ZombieSystem {
 
   // ------------------------------------------------------------------ tick
 
-  update(now: number, dt: number): void {
+  update(now: number, dt: number, serverNow = now): void {
     const players = [...this.players()];
     this.updateSpawning(players, now);
 
@@ -399,16 +403,18 @@ export class ZombieSystem {
       const v = z.agent.velocity();
       if (Math.hypot(v.x, v.z) > 0.15 && !z.attackAt) z.yaw = Math.atan2(-v.x, -v.z);
       z.pos = { x: p.x, y: p.y, z: p.z };
+      z.history.push(serverNow, z.pos);
     }
   }
 
   // ------------------------------------------------------------------ combat
 
-  /** Living zombies that can be hit (for the weapon system's ray tests). */
-  *targets(): Iterable<{ id: number; hitboxes: Hitboxes }> {
+  /** Living zombies that can be hit (optionally where they were at server time `rewindTo`). */
+  *targets(rewindTo?: number): Iterable<{ id: number; hitboxes: Hitboxes }> {
     for (const z of this.zombies.values()) {
       if (z.state === 'dead') continue;
-      yield { id: z.id, hitboxes: humanoidHitboxes(z.pos, false, z.def.scale) };
+      const past = rewindTo !== undefined ? z.history.sample(rewindTo) : null;
+      yield { id: z.id, hitboxes: humanoidHitboxes(past ? past.pos : z.pos, false, z.def.scale) };
     }
   }
 

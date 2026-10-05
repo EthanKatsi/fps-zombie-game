@@ -111,7 +111,7 @@ test('a zombie hears a gunshot far away and investigates', async () => {
   assert.notEqual(zombies.get(id)!.state, 'chase');
   p.inventory.slots[0] = { uid: makeUid(), defId: 'pistol', qty: 1, loadedAmmo: 5, durability: 100 };
   p.inventory.activeHotbar = 0;
-  c.emit('attack', { seq: 0, dir: [0, 1, 0], aim: false }); // shoot into the air
+  c.emit('attack', { seq: 0, dir: [0, 1, 0], aim: false, afterSeq: -1, viewTime: Infinity }); // shoot into the air
   const heard = await until(() => zombies.get(id)!.state === 'investigate', 1500);
   assert.ok(heard, `state ${zombies.get(id)!.state}`);
   const before = flat(zombies.get(id)!.pos, p.state.pos);
@@ -149,7 +149,7 @@ test('headshots kill zombies fast; kills are confirmed', async () => {
   p.inventory.slots[0] = { uid: makeUid(), defId: 'pistol', qty: 1, loadedAmmo: 5, durability: 100 };
   p.inventory.activeHotbar = 0;
   const confirm = new Promise<any>((r) => c.once('hitConfirm', r));
-  c.emit('attack', { seq: 0, dir: [d.x / l, d.y / l, d.z / l], aim: true });
+  c.emit('attack', { seq: 0, dir: [d.x / l, d.y / l, d.z / l], aim: true, afterSeq: -1, viewTime: Infinity });
   const res = await confirm;
   assert.equal(res.kind, 'zombie');
   assert.equal(res.head, true);
@@ -157,7 +157,7 @@ test('headshots kill zombies fast; kills are confirmed', async () => {
   assert.ok(zombies.get(id)!.health <= ZOMBIE_TYPES.walker.health - 60);
   await sleep(300);
   const kill = new Promise<any>((r) => c.once('hitConfirm', r));
-  c.emit('attack', { seq: 1, dir: [d.x / l, d.y / l, d.z / l], aim: true });
+  c.emit('attack', { seq: 1, dir: [d.x / l, d.y / l, d.z / l], aim: true, afterSeq: -1, viewTime: Infinity });
   assert.equal((await kill).kill, true);
   assert.equal(zombies.get(id)!.state, 'dead');
 });

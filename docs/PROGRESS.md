@@ -13,8 +13,8 @@ Original requirements: [SPEC.md](SPEC.md). Design: [ARCHITECTURE.md](ARCHITECTUR
 | 4 | Survival stats, death, respawn | ✅ Done | `72da7a7` |
 | 5 | Weapons & FPS combat with viewmodels | ✅ Done | `de9e212` |
 | 6 | Zombies (navmesh AI, noise/vision, combat) | ✅ Done | `24bc1f2` |
-| 7 | PvP, lag-compensated hits, death loot bags, kill feed | ⏳ Next | |
-| 8 | Groups/teams and chat | | |
+| 7 | PvP, lag-compensated hits, death loot bags, kill feed | ✅ Done | see `git log` |
+| 8 | Groups/teams and chat | ⏳ Next | |
 | 9 | Base building, storage, respawn beds | | |
 | 10 | Raiding and structure damage | | |
 | 11 | Day/night, 3D audio, settings, polish, balancing, final README | | |
@@ -209,6 +209,29 @@ Other commits: menu retitle to "The Walking Dead" (`8937010`).
   - Zombies don't open doors.
   - No groan audio yet (M11).
 
+## Milestone 7: PvP ✅
+
+- **Config**: `shared/src/config/pvp.ts`. PvP on/off, spawn protection (10 s, ends when you attack), max rewind
+  (350 ms), history length, pending-attack timeout, kill feed duration.
+- **Lag compensation** (`WeaponSystem.execute`):
+  - Every player and zombie keeps a `PositionHistory` (server clock, 1 s).
+  - `AttackRequest.viewTime` is the server time the shooter was rendering other entities at (their clock estimate
+    minus the interpolation delay).
+  - Hitscan targets are tested at their positions at `clamp(viewTime, now - maxRewindMs, now)`. The world itself
+    isn't rewound.
+  - `AttackRequest.afterSeq` is the shooter's last input before the shot. If the server hasn't simulated that input
+    yet, the attack waits in `ServerPlayer.pendingAttacks` and runs right after that input (`simulate(..., onApplied)`),
+    so it fires from exactly where the shooter's screen was.
+  - Melee and crossbow bolts are not rewound: melee has a forgiving sweep, and bolts fly in real time.
+- **Spawn protection**: set on join and on respawn (`SurvivalSystem.reviveAt`). While it's on, player damage is
+  ignored with no hit marker. Attacking clears it.
+- **Kill feed**: `SurvivalSystem.kill` broadcasts `killFeed {victim, killer, cause, weapon, headshot}` for every
+  death, PvP or not. `ui/KillFeed.ts` shows the last 6 entries in the top right, highlighting the ones involving you.
+- **Death screen**: "Killed by kats with a Hunting Rifle (headshot) from 64 m.", using `DeathInfo.weapon/headshot/distance`.
+- **Death bags** (from M4): the killer or anyone else can loot the victim's whole inventory.
+- **Teleports clear history**, so `PositionHistory` never interpolates across a teleport. Tests use `slide()` to
+  move a target without clearing it.
+
 ## Admin / testing tools
 
 `server/src/admin.ts` is a local-only HTTP admin API. Requests must come from this machine and carry the token
@@ -245,6 +268,15 @@ the server writes to `server/data/admin-token.txt` on every start (the file is g
   - headshot kills with confirmation
   - following a player up the stairs to a roof
 - `server/test/zombie-doors.test.ts` (city): a closed door keeps a chasing zombie out; opening it lets the zombie in.
+- `server/test/history.test.ts`: interpolation, clamping, the keep window.
+- `server/test/pvp.test.ts`:
+  - a rewound hit lands where the target was, while the same shot judged at "now" misses
+  - the rewind cap
+  - deferred attacks waiting for their input
+  - spawn protection, and attacking ending it
+  - the kill feed reaching others, and death info with weapon/headshot/distance
+  - environmental deaths in the feed
+- Gotcha: newly joined players have spawn protection; PvP tests set `victim.protectedUntil = 0`.
 - Gotcha: players can overlap (no player-player collision). Keep test players apart from spawn points and each other, or a bystander takes the hit.
 - Gotcha: a teleported test player counts as airborne (+4° spread) until they send a movement input. Use `settle()`.
 - Gotcha: the test map scatters wrecked cars just outside a 6 m radius of the origin. Put test players within ~2 m of the origin, or line-of-sight checks will (correctly) fail.

@@ -113,6 +113,13 @@ sides move the door collider in their physics world, so prediction stays in sync
 - `WeaponSystem` treats zombies as hit targets. Clients receive interest-managed `NetZombie`s in each snapshot and
   animate them procedurally.
 
+## PvP & lag compensation (milestone 7)
+
+- Attacks carry `afterSeq` (the input they follow) and `viewTime` (what the shooter saw).
+- The server runs each attack right after that input is simulated, so the shooter's origin is exact. It then
+  rewinds players and zombies through their position histories to `viewTime` (capped at 350 ms) before the hit test.
+- Deaths are broadcast to everyone as kill feed entries.
+
 ## Networking model
 
 - **Transport**: Socket.IO over WebSocket only. JSON for now; a binary codec can replace it behind `protocol.ts`.

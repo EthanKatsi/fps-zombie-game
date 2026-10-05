@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { World } from '@dimforge/rapier3d-compat';
 import {
+  NETWORK,
   PLAYER_GROUPS,
   countItem,
   getItemDef,
@@ -145,7 +146,14 @@ export class WeaponController {
     }
 
     camera.getWorldDirection(this.fwd);
-    conn.socket.emit('attack', { seq: this.seq, dir: [this.fwd.x, this.fwd.y, this.fwd.z], aim: this.aiming });
+    conn.socket.emit('attack', {
+      seq: this.seq,
+      dir: [this.fwd.x, this.fwd.y, this.fwd.z],
+      aim: this.aiming,
+      // Lag compensation: fire from after our latest input, at the moment we were looking at.
+      afterSeq: local.lastInputSeq,
+      viewTime: conn.serverNow() - NETWORK.interpolationDelayMs,
+    });
     this.seq++;
     this.lastAttackAt = now;
   }

@@ -3,8 +3,8 @@
 Browser-based multiplayer open-world zombie survival FPS set in the abandoned city of Calder Point.
 TypeScript · Three.js · Rapier · Node · Socket.IO · SQLite.
 
-> Work in progress. Milestones 1-6 are done: multiplayer first-person movement in a procedurally generated
-> city with enterable buildings, doors and stairs, plus inventory, looting, crafting, item drops, survival stats, death bags, respawning, melee/gun combat, and zombies (walkers, runners, bloaters) that hear gunshots, see you, chase you up stairs and wait outside closed doors.
+> Work in progress. Milestones 1-7 are done: multiplayer first-person movement in a procedurally generated
+> city with enterable buildings, doors and stairs, plus inventory, looting, crafting, item drops, survival stats, death bags, respawning, melee/gun combat, and zombies (walkers, runners, bloaters) that hear gunshots, see you, chase you up stairs and wait outside closed doors, plus lag-compensated PvP with a kill feed and spawn protection.
 > A shooting range with training dummies is next to the police station (blue sign).
 > Status and next steps: [docs/PROGRESS.md](docs/PROGRESS.md). A full README
 > lands in milestone 11. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
