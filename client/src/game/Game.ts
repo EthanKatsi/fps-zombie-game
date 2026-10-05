@@ -38,6 +38,22 @@ import { DummiesView } from './DummiesView';
 import { ZombiesView } from './ZombiesView';
 import { Viewmodel } from './weapons/Viewmodel';
 import { WeaponController } from './weapons/WeaponController';
+import { Atmosphere } from '../render/atmosphere';
+import { PostFX, type GraphicsQuality } from '../render/postfx';
+import { generateSurfaceTextures } from '../render/textures';
+import { createWorldMaterial } from '../render/worldMaterial';
+
+const QUALITY_KEY = 'grey.gfx';
+const QUALITIES: GraphicsQuality[] = ['high', 'medium', 'low'];
+const SHADOW_SIZE: Record<GraphicsQuality, number> = { high: 4096, medium: 2048, low: 1024 };
+const loadQuality = (): GraphicsQuality => {
+  try {
+    const q = localStorage.getItem(QUALITY_KEY) as GraphicsQuality | null;
+    return q && QUALITIES.includes(q) ? q : 'high';
+  } catch {
+    return 'high';
+  }
+};
 
 const BASE_FOV = 75;
 
@@ -65,7 +81,9 @@ export class Game {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.PerspectiveCamera;
-  private readonly sun: THREE.DirectionalLight;
+  private readonly atmosphere: Atmosphere;
+  private readonly postfx: PostFX;
+  private quality: GraphicsQuality = loadQuality();
   private readonly world: World;
   private readonly map: MapData;
   private readonly mapRenderer: MapRenderer;
@@ -112,28 +130,23 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+    if (this.quality === 'low') this.renderer.setPixelRatio(1);
     this.renderer.autoClear = false; // world + viewmodel are drawn in two passes
     container.appendChild(this.renderer.domElement);
 
     this.camera = new THREE.PerspectiveCamera(BASE_FOV, window.innerWidth / window.innerHeight, 0.05, RENDER.cameraFar);
     this.scene.add(this.camera);
-    const sky = new THREE.Color(0x8a8c86);
-    this.scene.background = sky;
-    this.scene.fog = new THREE.Fog(sky, RENDER.fogNear, RENDER.fogFar);
-    this.scene.add(new THREE.HemisphereLight(0xb7b9b0, 0x3a342c, 1.25));
-
-    // Shadow-casting sun; its shadow box follows the player (see updateSun).
-    this.sun = new THREE.DirectionalLight(0xfff1dc, 1.5);
-    this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
-    const sc = this.sun.shadow.camera;
-    sc.left = sc.bottom = -RENDER.shadowExtent;
-    sc.right = sc.top = RENDER.shadowExtent;
-    sc.near = 1;
-    sc.far = 300;
-    this.sun.shadow.bias = -0.0006;
-    this.sun.shadow.normalBias = 0.03;
-    this.scene.add(this.sun, this.sun.target);
+    // Physical sky, hazy sun with soft shadows, sky reflections; then AO / bloom / grade.
+    this.atmosphere = new Atmosphere(this.renderer, this.scene, RENDER.shadowExtent, SHADOW_SIZE[this.quality]);
+    this.postfx = new PostFX(this.renderer, this.scene, this.camera, this.quality);
+    this.viewmodel.scene.environment = this.scene.environment;
+    this.viewmodel.scene.environmentIntensity = 0.8;
+    // Procedural surface textures for every map piece (brick, concrete, asphalt...).
+    const tTex = performance.now();
+    const surfaces = generateSurfaceTextures(this.renderer);
+    console.info(`[gfx] surface textures generated in ${Math.round(performance.now() - tTex)} ms`);
+    const worldMat = createWorldMaterial(surfaces);
 
     // --- world: regenerate the same map + colliders as the server ---
     this.map = loadMap(join.mapId, join.mapSeed);
@@ -142,7 +155,7 @@ export class Game {
       this.mapMismatch = true;
       console.error(`[map] hash mismatch: client ${localHash} vs server ${join.mapHash}. Refresh the page.`);
     }
-    this.mapRenderer = new MapRenderer(this.map);
+    this.mapRenderer = new MapRenderer(this.map, worldMat);
     this.scene.add(this.mapRenderer.root);
 
     this.world = new R.World({ x: 0, y: 0, z: 0 });
@@ -153,7 +166,7 @@ export class Game {
       if (this.doorColliders.open[d.id] !== open.has(d.id)) this.doorColliders.set(d.id, open.has(d.id));
     }
     this.world.step();
-    this.doorRenderer = new DoorRenderer(this.map.doors, this.doorColliders.open);
+    this.doorRenderer = new DoorRenderer(this.map.doors, this.doorColliders.open, worldMat);
     this.scene.add(this.doorRenderer.mesh);
     this.containerIndex = new ContainerIndex(this.map.containers);
     this.groundItems = new GroundItemsView(this.scene);
@@ -342,6 +355,7 @@ export class Game {
       this.inventoryUI.setActive(active);
       this.conn.socket.emit('invOp', { op: 'select', hotbar: active });
     }
+    if (this.input.consumePress('F8')) this.cycleQuality();
     const held = this.inventoryUI.inventory?.slots[active];
     if (this.input.consumePress('KeyQ') && held) {
       this.conn.socket.emit('invOp', { op: 'drop', from: { owner: 'self', index: active } });
@@ -357,8 +371,27 @@ export class Game {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.postfx.setSize(window.innerWidth, window.innerHeight);
     this.viewmodel.setAspect(this.camera.aspect);
   };
+
+  /** F8: cycle High / Medium / Low graphics (remembered in this browser). */
+  private cycleQuality(): void {
+    this.quality = QUALITIES[(QUALITIES.indexOf(this.quality) + 1) % QUALITIES.length];
+    try {
+      localStorage.setItem(QUALITY_KEY, this.quality);
+    } catch {
+      /* private mode: just don't remember */
+    }
+    this.postfx.setQuality(this.quality);
+    this.renderer.setPixelRatio(this.quality === 'low' ? 1 : Math.min(window.devicePixelRatio, 2));
+    const sun = this.atmosphere.sun;
+    sun.shadow.mapSize.set(SHADOW_SIZE[this.quality], SHADOW_SIZE[this.quality]);
+    sun.shadow.map?.dispose();
+    sun.shadow.map = null;
+    this.onResize();
+    this.ui.toast(`Graphics: ${this.quality.toUpperCase()}`);
+  }
 
   private frame = (now: number) => {
     if (!this.running) return;
@@ -393,9 +426,8 @@ export class Game {
     this.mapRenderer.update(this.camera.position);
     this.updateSun();
 
-    // Pass 1: the world. Pass 2: the first-person viewmodel on top (never clips into walls).
-    this.renderer.clear();
-    this.renderer.render(this.scene, this.camera);
+    // Pass 1: the world (+ post-processing). Pass 2: the first-person viewmodel on top.
+    this.postfx.render(dt);
     const v = this.local.state.vel;
     this.viewmodel.visible = !this.dead && !this.scoped;
     this.viewmodel.update(dt, Math.hypot(v.x, v.z), this.weapons.aiming);
@@ -459,13 +491,9 @@ export class Game {
     if (this.input.consumePress('KeyE') && this.target) this.conn.socket.emit('interact', this.target);
   }
 
-  /** Keep the shadow frustum centered on the player, snapped to shadow texels to avoid shimmer. */
+  /** Sky follows the camera; the shadow box follows the player (texel-snapped). */
   private updateSun(): void {
-    const texel = (RENDER.shadowExtent * 2) / this.sun.shadow.mapSize.x;
-    const x = Math.round(this.camera.position.x / texel) * texel;
-    const z = Math.round(this.camera.position.z / texel) * texel;
-    this.sun.target.position.set(x, 0, z);
-    this.sun.position.set(x + 60, 110, z + 40);
+    this.atmosphere.update(this.camera, RENDER.shadowExtent);
   }
 
   private updateHud(dt: number): void {

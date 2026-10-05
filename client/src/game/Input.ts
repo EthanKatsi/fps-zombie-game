@@ -26,8 +26,8 @@ export class Input {
       if (!this.locked) return;
       this.keys.add(e.code);
       if (!e.repeat) this.pressed.add(e.code);
-      // Stop browser shortcuts (space scrolling, etc.) while playing.
-      if (['Space', 'Tab'].includes(e.code)) e.preventDefault();
+      // Stop browser shortcuts (space scrolling, F-keys, etc.) while playing.
+      if (['Space', 'Tab', 'F8'].includes(e.code)) e.preventDefault();
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => this.keys.clear());

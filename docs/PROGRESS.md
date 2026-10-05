@@ -209,6 +209,29 @@ Other commits: menu retitle to "The Walking Dead" (`8937010`).
   - Zombies don't open doors.
   - No groan audio yet (M11).
 
+## Extra: realistic graphics pass (requested after M7)
+
+Everything is generated in code (no downloaded assets):
+- `client/src/render/textures.ts`: **15 procedural surfaces**, rendered on the GPU at startup into two 512×512 array
+  textures. The surfaces are brick, concrete, cracked asphalt, wood planks, lap siding with peeling paint, grass,
+  tiles, plaster, brushed/rusty metal, fabric, roof gravel, sidewalk slabs, bark, leaves and a plain one.
+  - The detail texture holds the colour multiplier plus a grout mask; the second holds the relief normal plus
+    roughness.
+  - The first version generated them on the CPU and froze the page for ~45 s. Keep generation on the GPU.
+- `client/src/render/worldMaterial.ts`: `MeshStandardMaterial` + `onBeforeCompile`. It samples those textures
+  **triplanar in world space** (nothing stretches on scaled boxes), with per-instance surface index, roughness and
+  metalness (`aTex`/`aSurf` attributes), plus grime near street level and large weathering stains.
+  `SURFACE_OF` maps map material keys to surfaces.
+- `client/src/render/atmosphere.ts`: an art-directed hazy gradient sky with a sun glow, a warm sun with soft 4K
+  shadows, IBL reflections baked from the sky, and exponential haze. `setSun(elev, az)` is the M11 day/night hook.
+  - Three.js' physical `Sky` was tried and blew everything out (HDR values). Don't use it without heavy exposure
+    tuning.
+- `client/src/render/postfx.ts`: GTAO ambient occlusion → subtle bloom → tone mapping → colour grade (desaturation,
+  split toning, contrast, vignette, film grain).
+- Foliage renders as lumpy blobs and trunks as cylinders (`MapRenderer` shapes). Glass is reflective.
+- **Graphics quality** on **F8**: High (AO, 4K shadows), Medium (no AO, 2K shadows), Low (no post-processing,
+  1K shadows, pixel ratio 1). Remembered in localStorage (`grey.gfx`).
+
 ## Extra: assault rifle (requested after M7)
 
 - An `assault_rifle` item plus weapon. It's the first **full-auto** weapon (`WeaponDef.automatic`: hold to fire):

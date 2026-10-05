@@ -35,6 +35,7 @@ Open a second browser window with a different name to see multiplayer.
 | Left click | Attack (fists / melee / shoot), or use held food/drink/medicine |
 | Right click (hold) | Aim down sights (guns) |
 | R | Reload |
+| F8 | Cycle graphics quality (High / Medium / Low) |
 | Esc | Release mouse / pause |
 
 ## Other commands
