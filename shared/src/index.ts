@@ -12,6 +12,7 @@ export * from './config/survival';
 export * from './config/network';
 export * from './config/world';
 export * from './config/vehicles';
+export * from './config/groups';
 export * from './config/items';
 export * from './config/inventory';
 export * from './config/loot';

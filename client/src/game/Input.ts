@@ -20,14 +20,30 @@ export class Input {
   /** Set by the weapon controller each frame: right mouse is aiming down sights right now. */
   aimActive = false;
   onLockChange: (locked: boolean) => void = () => {};
+  /** Typing in chat: keys go to the text box, not the game. */
+  private suspendedFlag = false;
   /** Double-tap W (then hold) to sprint. */
   private lastWDown = -Infinity;
   private sprintLatched = false;
   private static readonly DOUBLE_TAP_MS = 300;
 
+  get suspended(): boolean {
+    return this.suspendedFlag;
+  }
+
+  /** While suspended (chat open) the game ignores the keyboard; held keys are released. */
+  set suspended(on: boolean) {
+    this.suspendedFlag = on;
+    if (on) {
+      this.keys.clear();
+      this.pressed.clear();
+      this.sprintLatched = false;
+    }
+  }
+
   constructor(private readonly element: HTMLElement) {
     window.addEventListener('keydown', (e) => {
-      if (!this.locked) return;
+      if (!this.locked || this.suspendedFlag) return;
       this.keys.add(e.code);
       if (!e.repeat) this.pressed.add(e.code);
       if (e.code === 'KeyW' && !e.repeat) {
@@ -36,7 +52,7 @@ export class Input {
         this.lastWDown = now;
       }
       // Stop browser shortcuts (space scrolling, F-keys, etc.) while playing.
-      if (['Space', 'Tab', 'F8'].includes(e.code)) e.preventDefault();
+      if (['Space', 'Tab', 'F8', 'F3'].includes(e.code)) e.preventDefault();
     });
     window.addEventListener('keyup', (e) => {
       this.keys.delete(e.code);

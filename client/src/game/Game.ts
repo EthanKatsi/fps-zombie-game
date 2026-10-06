@@ -26,6 +26,7 @@ import {
   type MoveInput,
   type Rapier,
   type SlotRef,
+  type TeammatePos,
 } from '@grey/shared';
 import type { Connection } from '../net/Connection';
 import { Input } from './Input';
@@ -41,6 +42,10 @@ import { Effects } from './Effects';
 import { DummiesView } from './DummiesView';
 import { ZombiesView } from './ZombiesView';
 import { VehiclesView } from './VehiclesView';
+import { TeammateMarkers } from './TeammateMarkers';
+import { Chat } from '../ui/Chat';
+import { GroupPanel } from '../ui/GroupPanel';
+import { Compass, Minimap } from '../ui/Navigation';
 import { Viewmodel } from './weapons/Viewmodel';
 import { WeaponController } from './weapons/WeaponController';
 import type { ModelLibrary } from './models/ModelLibrary';
@@ -115,6 +120,13 @@ export class Game {
   private mouseIdle = 0;
   private camYawSet = 0;
   private readonly vehicleHud = document.getElementById('vehicle-hud');
+  private readonly chat: Chat;
+  private readonly groupPanel: GroupPanel;
+  private readonly minimap: Minimap;
+  private readonly compass = new Compass();
+  private readonly teammateMarkers: TeammateMarkers;
+  private teammates: TeammatePos[] = [];
+  private navTimer = 0;
 
   private dead = false;
   private readonly tmpV = new THREE.Vector3();
@@ -199,6 +211,8 @@ export class Game {
     this.dummies = new DummiesView(this.scene, this.map.dummies, join.dummiesDown);
     this.zombies = new ZombiesView(this.scene, models);
     this.vehicles = new VehiclesView(R, this.world, this.scene);
+    this.teammateMarkers = new TeammateMarkers(this.scene);
+    this.minimap = new Minimap(this.map);
     this.killFeed = new KillFeed(join.username);
     this.viewmodel.setAspect(window.innerWidth / window.innerHeight);
 
@@ -219,8 +233,13 @@ export class Game {
     this.input = new Input(this.renderer.domElement);
     this.input.sensitivity = BASE_SENSITIVITY * getSettings().sensitivity;
     this.offSettings = onSettingsChange((s) => this.applySettings(s));
-    // Unlocking the mouse for the inventory screen is not a pause.
-    this.input.onLockChange = (locked) => this.ui.setPaused(!locked && !this.inventoryUI.isOpen && !this.dead);
+    // Unlocking the mouse for the inventory / group panel / map is not a pause.
+    this.input.onLockChange = (locked) => this.ui.setPaused(!locked && !this.overlayOpen && !this.dead);
+    this.chat = new Chat(
+      (channel, text) => conn.socket.emit('chat', { channel, text }),
+      () => (this.input.suspended = false),
+    );
+    this.groupPanel = new GroupPanel(join.playerId, (op) => conn.socket.emit('group', op));
     this.local = new LocalPlayer(R, this.world, join.state, this.input);
     this.local.vehicleCollider = (id) => this.vehicles.collider(id);
     this.local.vehicleObstacles = (except) => this.vehicles.boxes(except);
@@ -328,6 +347,19 @@ export class Game {
     s.on('projectileEnd', ({ id, p, hit }) => this.effects.endBolt(id, new THREE.Vector3(...p), hit));
     s.on('dummyState', ({ id, down }) => this.dummies.setDown(id, down));
     s.on('killFeed', (e) => this.killFeed.push(e));
+    s.on('chatMessage', (m) => this.chat.add(m));
+    s.on('groupState', (g) => {
+      this.groupPanel.setGroup(g);
+      this.chat.setInGroup(!!g);
+      this.remotes.teammates = new Set((g?.members ?? []).map((m) => m.id).filter((id) => id !== join.playerId));
+      if (!g) this.teammates = [];
+    });
+    s.on('groupInvite', (inv) => {
+      this.groupPanel.addInvite(inv);
+      this.chat.add({ channel: 'system', from: null, text: `${inv.from} invited you to join "${inv.groupName}". Press G to answer.`, at: Date.now() });
+      this.ui.toast(`Group invite from ${inv.from} (press G)`);
+    });
+    s.on('teammates', (list) => (this.teammates = list));
     s.on('died', (info) => {
       this.dead = true;
       if (this.inventoryUI.isOpen) this.closeInventory(false);
@@ -380,8 +412,35 @@ export class Game {
     else this.ui.setPaused(!this.input.locked);
   }
 
+  /** Inventory, group panel or full map is showing (mouse released, not a pause). */
+  private get overlayOpen(): boolean {
+    return this.inventoryUI.isOpen || this.groupPanel.isOpen || this.minimap.isBigOpen;
+  }
+
+  private openOverlay(which: 'group' | 'map'): void {
+    if (which === 'group') this.groupPanel.open();
+    else this.minimap.toggleBig();
+    this.ui.setPrompt(null);
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
+
+  private closeOverlays(relock: boolean): void {
+    this.groupPanel.close();
+    this.minimap.closeBig();
+    if (relock) this.input.requestLock();
+    else this.ui.setPaused(!this.input.locked);
+  }
+
   /** Keys while the inventory screen is open (pointer unlocked, so Input ignores them). */
   private onUiKey = (e: KeyboardEvent) => {
+    if (this.groupPanel.isOpen || this.minimap.isBigOpen) {
+      const typing = (e.target as HTMLElement | null)?.tagName === 'INPUT';
+      if (e.code === 'Escape' || (!typing && ((e.code === 'KeyG' && this.groupPanel.isOpen) || (e.code === 'KeyM' && this.minimap.isBigOpen)))) {
+        e.preventDefault();
+        this.closeOverlays(e.code !== 'Escape');
+      }
+      return;
+    }
     if (!this.inventoryUI.isOpen) return;
     if (e.code === 'Tab' || e.code === 'KeyI' || (e.code === 'KeyE' && this.inventoryUI.openContainerKey)) {
       e.preventDefault();
@@ -397,6 +456,19 @@ export class Game {
       this.openInventory();
       return;
     }
+    if (this.input.consumePress('Enter')) {
+      this.input.suspended = true;
+      this.chat.openInput();
+      return;
+    }
+    if (this.input.consumePress('KeyG')) {
+      this.openOverlay('group');
+      return;
+    }
+    if (this.input.consumePress('KeyM')) {
+      this.openOverlay('map');
+      return;
+    }
     let active = this.inventoryUI.activeHotbar;
     for (let i = 0; i < INVENTORY.hotbarSize; i++) if (this.input.consumePress(`Digit${i + 1}`)) active = i;
     const wheel = this.input.consumeWheel();
@@ -406,6 +478,7 @@ export class Game {
       this.conn.socket.emit('invOp', { op: 'select', hotbar: active });
     }
     if (this.input.consumePress('F8')) this.cycleQuality();
+    if (this.input.consumePress('F3')) document.getElementById('debug')?.classList.toggle('hidden');
     if (this.input.consumePress('KeyV')) {
       this.cameraMode = this.cameraMode === 'first' ? 'third' : this.cameraMode === 'third' ? 'front' : 'first';
       this.ui.toast(this.cameraMode === 'first' ? 'First person' : this.cameraMode === 'third' ? 'Third person' : 'Facing view');
@@ -477,7 +550,7 @@ export class Game {
     else this.applyCameraMode(dt);
     this.hud.update(dt);
     const inv = this.inventoryUI.inventory;
-    const playing = !this.inventoryUI.isOpen && !this.dead;
+    const playing = !this.overlayOpen && !this.dead && !this.chat.isOpen;
     if (playing) {
       this.updateHotbarInput();
       this.updateInteraction();
@@ -512,8 +585,22 @@ export class Game {
     this.renderer.clearDepth();
     this.renderer.render(this.viewmodel.scene, this.viewmodel.camera);
 
+    this.updateNavigation(dt);
     this.updateHud(dt);
   };
+
+  /** Compass, minimap and teammate markers (a few times a second is plenty for the maps). */
+  private updateNavigation(dt: number): void {
+    const me = this.local.renderFeet;
+    this.teammateMarkers.update(this.teammates, this.camera.position, (id) => this.remotes.has(id), dt);
+    this.compass.update(me.x, me.z, this.input.yaw, this.teammates);
+    this.navTimer -= dt;
+    if (this.navTimer > 0 && !this.minimap.isBigOpen) return;
+    this.navTimer = 0.1;
+    const markers = this.teammates.map((t) => ({ name: t.name, x: t.p[0], z: t.p[2], alive: t.alive }));
+    this.minimap.update(me.x, me.z, this.input.yaw, markers);
+    this.chat.update();
+  }
 
   private scoped = false;
 

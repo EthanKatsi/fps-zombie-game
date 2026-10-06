@@ -14,8 +14,8 @@ Original requirements: [SPEC.md](SPEC.md). Design: [ARCHITECTURE.md](ARCHITECTUR
 | 5 | Weapons & FPS combat with viewmodels | ✅ Done | `de9e212` |
 | 6 | Zombies (navmesh AI, noise/vision, combat) | ✅ Done | `24bc1f2` |
 | 7 | PvP, lag-compensated hits, death loot bags, kill feed | ✅ Done | `eb1c0b9` |
-| 8 | Groups/teams and chat | ⏳ Next | |
-| 9 | Base building, storage, respawn beds | | |
+| 8 | Groups/teams and chat | ✅ Done | see git log "Milestone 8" |
+| 9 | Base building, storage, respawn beds | ⏳ Next | |
 | 10 | Raiding and structure damage | | |
 | 11 | Day/night, 3D audio, settings, polish, balancing, final README | | |
 
@@ -427,6 +427,40 @@ Everything is generated in code (no downloaded assets):
   10 rounds/s, 22 damage, 30-round magazine, 5.56 ammo, 2.6 s reload, low recoil per shot.
 - Rare loot: police lockers, police crates and gun shop lockers.
 - The server fire-rate check already throttles modified clients (tested).
+
+## Milestone 8: groups and chat ✅
+
+- **Groups** (`server/src/game/GroupSystem.ts`, config `GROUPS`). Up to 6 members, one leader.
+  - Create (name 3-20 characters, unique), invite (the target must be online; invites expire after 2 minutes),
+    accept / decline, leave, and kick / make leader (leader only).
+  - When the leader leaves, an online member takes over. The last member out disbands the group.
+  - Persisted: migration 2 adds a `groups` table, and membership is `players.group_id`
+    (`SqliteGroupRepository`; `MemoryGroupRepository` is the default when no database is given).
+  - Offline members stay members and show as offline.
+- **Friendly fire off** (`GROUPS.friendlyFire`): guns, melee and running people over all skip teammates
+  (`sameGroup` in `WeaponSystem.hit` and `VehicleSystem.runOver`).
+- **Teammate positions** go to every online member twice a second regardless of distance (`teammates` event).
+  They drive:
+  - the compass (top centre: headings, plus "▼ name 41m" markers for teammates in view);
+  - the minimap (top right, north-up, about 110 m radius, teammates pinned to the edge when far);
+  - the full map (M, with area labels);
+  - green name tags through walls: `RemotePlayer.setTeammate` for nearby teammates, `TeammateMarkers`
+    (constant-size, always on top) for far ones.
+- **Chat** (`ui/Chat.ts`): Enter opens it; Tab switches All / Group; Enter sends; Esc cancels.
+  - The server cleans the text (control characters, 200-character cap) and rate-limits (700 ms).
+  - System lines cover joins and leaves, group events and invites. Lines fade after 12 s.
+  - While typing, `Input.suspended` stops the game reading keys.
+- **Group panel** (G): create, answer invites, invite, member list (online dot, leader star), kick, make leader,
+  leave.
+- **Map image** (`ui/Navigation.ts renderMapImage`) is drawn once from `MapData`: surfaces, buildings
+  (police in blue), the city wall, tree crowns and gas pumps.
+- **Also:** the debug readout is hidden by default (F3 toggles it), so it doesn't cover the compass; the kill feed
+  moved below the minimap.
+- **Shared base access** for groups (doors and chests) arrives with bases in milestone 9: structures will check
+  `sameGroup(owner, player)`.
+- Tests: `server/test/groups.test.ts` covers forming a group, teammate positions, chat channels and spam,
+  friendly fire, leadership handover, disbanding and persistence. The server test runner now uses
+  `--test-concurrency=2` (less timing flakiness).
 
 ## Milestone 7: PvP ✅
 

@@ -33,6 +33,8 @@ import { DummySystem } from './DummySystem';
 import { NoiseSystem } from './NoiseSystem';
 import { ZombieSystem } from './ZombieSystem';
 import { VehicleSystem } from './VehicleSystem';
+import { GroupSystem } from './GroupSystem';
+import { MemoryGroupRepository, type GroupRepository } from '../db/GroupRepository';
 import { Navigation, buildNavMesh } from './Navigation';
 import { WorldClock } from './WorldClock';
 import type { GameIO, GameSocket } from './types';
@@ -52,6 +54,7 @@ export class GameServer {
   readonly weapons: WeaponSystem;
   readonly dummies: DummySystem;
   readonly vehicles: VehicleSystem;
+  readonly groups: GroupSystem;
   readonly noise = new NoiseSystem();
   readonly clock = new WorldClock();
   /** Created by enableZombies() once the navmesh is ready. */
@@ -72,7 +75,7 @@ export class GameServer {
     private readonly io: GameIO,
     private readonly repo: PlayerRepository,
     private readonly auth: AuthProvider,
-    opts: { mapId?: string; mapSeed?: number } = {},
+    opts: { mapId?: string; mapSeed?: number; groupRepo?: GroupRepository } = {},
   ) {
     this.world = new R.World({ x: 0, y: 0, z: 0 });
     const t0 = performance.now();
@@ -86,6 +89,7 @@ export class GameServer {
     this.dummies = new DummySystem(this.map.dummies, io);
     this.vehicles = new VehicleSystem(R, this.world, this.map, () => this.players.values(), this.survival, this.noise, () => this.zombies, this.items);
     this.world.step(); // vehicle colliders
+    this.groups = new GroupSystem(opts.groupRepo ?? new MemoryGroupRepository(), () => this.players.values(), io);
     this.weapons = new WeaponSystem(
       R, this.world, () => this.players.values(), this.survival, this.items, this.dummies, this.noise,
       () => this.zombies, () => this.serverTime(),
@@ -190,12 +194,20 @@ export class GameServer {
     socket.on('reload', () => {
       if (player) this.weapons.reload(player);
     });
+    socket.on('group', (op) => {
+      if (player) this.groups.handle(player, op);
+    });
+    socket.on('chat', (msg) => {
+      if (player) this.groups.chat(player, msg);
+    });
 
     socket.on('disconnect', () => {
       if (!player) return;
       const p = player;
       this.vehicles.onPlayerGone(p);
       this.players.delete(p.id);
+      this.groups.onLeave(p);
+      this.groups.announce(`${p.username} left`);
       this.items.onLeave(p);
       p.dispose();
       this.io.emit('playerLeft', { id: p.id });
@@ -213,6 +225,7 @@ export class GameServer {
     if (req?.protocol !== PROTOCOL_VERSION) return reject('Client out of date, please refresh');
     if (this.players.size >= SERVER_CONFIG.maxPlayers) return reject('Server is full');
 
+    await this.groups.ready;
     const auth = await this.auth.authenticate(req);
     if (!auth.ok) return reject(auth.reason);
 
@@ -256,6 +269,8 @@ export class GameServer {
         players: [...this.players.values()].map((p) => ({ id: p.id, username: p.username })),
       });
       socket.broadcast.emit('playerJoined', { id: player.id, username: player.username });
+      this.groups.announce(`${player.username} joined`);
+      this.groups.onJoin(player);
       console.log(`[game] ${player.username} joined (${this.players.size} online)`);
       return player;
     } finally {
@@ -374,6 +389,7 @@ export class GameServer {
       }
     }
     this.vehicles.update(performance.now(), TICK_DT);
+    this.groups.update(performance.now());
 
     const now = performance.now();
     this.survival.update(this.players.values(), TICK_DT, now);

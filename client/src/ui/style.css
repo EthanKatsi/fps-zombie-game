@@ -234,6 +234,9 @@ button:disabled {
   color: #d8d4c8;
   background: rgba(0, 0, 0, 0.45);
 }
+#debug.hidden {
+  display: none;
+}
 
 #prompt {
   position: absolute;
@@ -848,4 +851,215 @@ details.settings summary {
 }
 #vehicle-hud .vh-fuel > div {
   height: 100%;
+}
+
+/* ---------------------------------------------------------------- groups, chat, navigation */
+#killfeed {
+  top: 222px !important;
+}
+#minimap {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  width: 190px;
+  height: 190px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background: #1b1c18;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+#compass {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  width: 520px;
+  height: 34px;
+  transform: translateX(-50%);
+  overflow: hidden;
+  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.45) 15%, rgba(0, 0, 0, 0.45) 85%, transparent);
+  pointer-events: none;
+  font-family: 'Segoe UI', sans-serif;
+}
+#compass > div {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+#compass .cmp-tick {
+  color: rgba(232, 227, 212, 0.35);
+  font-size: 10px;
+  top: 8px;
+}
+#compass .cmp-label {
+  color: rgba(232, 227, 212, 0.75);
+  font-size: 12px;
+  font-weight: 600;
+  top: 6px;
+}
+#compass .cmp-label.major {
+  color: #f0e6c8;
+  font-size: 15px;
+  font-weight: 700;
+  top: 4px;
+}
+#compass .cmp-heading {
+  left: 50%;
+  top: 22px;
+  font-size: 9px;
+  color: rgba(232, 227, 212, 0.6);
+}
+#compass .cmp-mate {
+  top: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #8be08b;
+  text-shadow: 0 0 3px #000;
+}
+#compass .cmp-mate.dead {
+  color: #999;
+}
+#chat {
+  position: absolute;
+  left: 20px;
+  bottom: 225px;
+  width: 440px;
+  font-family: 'Segoe UI', sans-serif;
+  font-size: 13px;
+  pointer-events: none;
+}
+#chat-log {
+  max-height: 210px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+#chat-log.open {
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+}
+.chat-line {
+  padding: 1px 6px;
+  color: #e8e3d4;
+  text-shadow: 0 1px 2px #000;
+  transition: opacity 0.6s;
+  word-wrap: break-word;
+}
+.chat-line.faded {
+  opacity: 0;
+}
+#chat-log.open .chat-line.faded {
+  opacity: 0.85;
+}
+.chat-line.group,
+.chat-line.group .chat-name {
+  color: #8be08b;
+}
+.chat-line.system {
+  color: #b8b2a2;
+  font-style: italic;
+}
+.chat-name {
+  font-weight: 700;
+  color: #f0d79a;
+}
+.chat-tag {
+  font-weight: 700;
+}
+#chat-input-row {
+  display: flex;
+  margin-top: 4px;
+  pointer-events: auto;
+}
+#chat-input-row.hidden {
+  display: none;
+}
+.chat-chan {
+  padding: 4px 8px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.7);
+  color: #f0d79a;
+}
+.chat-chan.group {
+  color: #8be08b;
+}
+#chat-input {
+  flex: 1;
+  padding: 4px 8px;
+  border: 0;
+  outline: none;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font: inherit;
+}
+#group-panel,
+#bigmap {
+  background: rgba(0, 0, 0, 0.6);
+  flex-direction: column;
+  gap: 8px;
+}
+.gp-card {
+  width: 440px;
+  color: var(--ink);
+}
+#group-body h3 {
+  margin: 6px 0 8px;
+}
+.gp-help {
+  color: var(--muted);
+  font-size: 12px;
+}
+.gp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 5px 0;
+}
+.gp-row input {
+  flex: 1;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--line);
+  color: #fff;
+}
+.gp-grow {
+  flex: 1;
+}
+.gp-end {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.gp-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.gp-dot.on {
+  background: #6fd36f;
+}
+.gp-dot.off {
+  background: #555;
+}
+.gp-btn {
+  padding: 5px 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  cursor: pointer;
+}
+.gp-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+.gp-btn.ok {
+  border-color: #5f9a5f;
+}
+.gp-btn.danger {
+  border-color: #8e1f1a;
+}
+#bigmap-canvas {
+  border: 1px solid var(--line);
+  box-shadow: 0 0 30px #000;
 }

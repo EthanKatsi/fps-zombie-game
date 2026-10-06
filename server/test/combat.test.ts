@@ -188,6 +188,8 @@ test('headshots multiply damage and kills are confirmed with the killer name', a
   a.p.teleport({ x: -3, y: 0, z: 0 });
   v.p.teleport({ x: -3, y: 0, z: -3 });
   await Promise.all([settle(a.c), settle(v.c)]);
+  // Airborne shooters get extra spread: make sure the teleport landing has been simulated.
+  for (let i = 0; i < 40 && !(a.p.state.grounded && v.p.state.grounded); i++) await Promise.all([settle(a.c), settle(v.c)]);
   equip(a.p, 'pistol', 12);
   const head = { x: -3, y: v.p.state.pos.y + 1.62, z: -3 };
   const dmg = next(v.c, 'damaged');

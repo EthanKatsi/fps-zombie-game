@@ -2,6 +2,8 @@ import type { World } from '@dimforge/rapier3d-compat';
 import {
   COMBAT,
   SHOT_GROUPS,
+  GROUPS,
+  sameGroup,
   PVP,
   aimDirection,
   countItem,
@@ -134,6 +136,7 @@ export class WeaponSystem {
       kind = 'player';
       const victim = target.p;
       if (!PVP.enabled || now < victim.protectedUntil) return; // spawn protection: no damage, no marker
+      if (!GROUPS.friendlyFire && sameGroup(attacker.record.groupId, victim.record.groupId)) return; // teammates
       if (w.bleedChance && Math.random() < w.bleedChance) victim.record.stats.bleeding = true;
       this.survival.damage(victim, damage, 'player', attacker, false, attacker.state.pos, { weapon: w.id, headshot: head });
       kill = !victim.alive;

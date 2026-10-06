@@ -38,6 +38,10 @@ Open a second browser window with a different name to see multiplayer.
 | V | Camera: first person → third person → facing view → first person (in a vehicle: seat view ↔ chase camera) |
 | E (at a vehicle) | Get in: drive if the driver's seat is free, otherwise ride as a passenger. E again gets out (when slow) |
 | W / S, A / D, Space (driving) | Throttle / brake and reverse, steer, handbrake |
+| Enter | Chat (Tab switches All / Group, Enter sends, Esc cancels) |
+| G | Group panel: create, invite, accept invites, kick / make leader, leave |
+| M | Full map (teammates in green) |
+| F3 | Toggle the debug readout (fps, position, ping) |
 | F8 | Cycle graphics quality (High / Medium / Low / Performance); also in Menu → Settings and the Esc pause screen |
 | Esc | Release mouse / pause |
 

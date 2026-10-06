@@ -7,7 +7,7 @@ import type { VehicleState } from '../sim/vehicle';
 import type { VehicleType } from '../config/vehicles';
 
 /** Bump when the wire format changes; server rejects mismatched clients. */
-export const PROTOCOL_VERSION = 12;
+export const PROTOCOL_VERSION = 13;
 
 // ---------- Client -> Server ----------
 
@@ -224,6 +224,58 @@ export interface Snapshot {
   vehicles: NetVehicle[];
 }
 
+// ------------------------------------------------------------------ groups & chat (milestone 8)
+
+export interface GroupMemberView {
+  id: PlayerId;
+  name: string;
+  online: boolean;
+}
+
+/** Your group as you see it (sent on join and whenever it changes; null = no group). */
+export interface GroupView {
+  id: string;
+  name: string;
+  leaderId: PlayerId;
+  members: GroupMemberView[];
+}
+
+export type GroupOp =
+  | { op: 'create'; name: string }
+  | { op: 'invite'; username: string }
+  | { op: 'accept'; groupId: string }
+  | { op: 'decline'; groupId: string }
+  | { op: 'leave' }
+  | { op: 'kick'; playerId: PlayerId }
+  | { op: 'promote'; playerId: PlayerId };
+
+export interface GroupInvite {
+  groupId: string;
+  groupName: string;
+  from: string;
+}
+
+export type ChatChannel = 'global' | 'group' | 'system';
+
+export interface ChatMessage {
+  channel: ChatChannel;
+  /** Sender name (null for system messages). */
+  from: string | null;
+  text: string;
+  /** Server time (ms since epoch). */
+  at: number;
+}
+
+/** An online teammate's position, sent regardless of distance (minimap, compass, name tags). */
+export interface TeammatePos {
+  id: PlayerId;
+  name: string;
+  p: [number, number, number];
+  /** Health 0..1. */
+  hp: number;
+  alive: boolean;
+}
+
 export interface ServerToClientEvents {
   joinAccepted: (msg: JoinAccepted) => void;
   joinRejected: (msg: { reason: string }) => void;
@@ -261,6 +313,10 @@ export interface ServerToClientEvents {
   projectileEnd: (msg: { id: string; p: [number, number, number]; hit: 0 | 1 | 2 }) => void;
   dummyState: (msg: { id: number; down: boolean }) => void;
   killFeed: (e: KillFeedEntry) => void;
+  groupState: (g: GroupView | null) => void;
+  groupInvite: (inv: GroupInvite) => void;
+  chatMessage: (m: ChatMessage) => void;
+  teammates: (list: TeammatePos[]) => void;
 }
 
 export interface ClientToServerEvents {
@@ -275,4 +331,6 @@ export interface ClientToServerEvents {
   cancelUse: () => void;
   attack: (req: AttackRequest) => void;
   reload: () => void;
+  group: (op: GroupOp) => void;
+  chat: (msg: { channel: 'global' | 'group'; text: string }) => void;
 }

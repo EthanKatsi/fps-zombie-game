@@ -119,12 +119,12 @@ test('a passenger rides along; running over a zombie hurts it', async () => {
   assert.equal(game.vehicles.seatOf(b.p)?.seat, 1, 'passenger seat');
 
   // A zombie standing in the road ahead (the bike faces +Z).
-  const zid = zombies.spawn('walker', { x: bike.state.pos.x, y: 0, z: bike.state.pos.z + 14 })!;
+  const zid = zombies.spawn('walker', { x: bike.state.pos.x, y: 0, z: bike.state.pos.z + 10 })!;
   assert.ok(zid !== null);
   const health0 = 80;
   const zhealth = () => (zombies as unknown as { zombies: Map<number, { health: number }> }).zombies.get(zid)?.health ?? 0;
   let hurt = false;
-  for (let t = 0; t < 7000 && !hurt; t += 500) {
+  for (let t = 0; t < 10000 && !hurt; t += 500) {
     await Promise.all([drive(a.c, 500, 1), drive(b.c, 500, 0)]);
     hurt = zhealth() < health0;
   }

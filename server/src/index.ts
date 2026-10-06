@@ -8,6 +8,7 @@ import type { ClientToServerEvents, ServerToClientEvents } from '@grey/shared';
 import { SERVER_CONFIG } from './config';
 import { openDatabase } from './db/Database';
 import { SqlitePlayerRepository } from './db/PlayerRepository';
+import { SqliteGroupRepository } from './db/GroupRepository';
 import { GuestAuthProvider } from './auth/AuthProvider';
 import { GameServer } from './game/GameServer';
 import { createAdmin } from './admin';
@@ -61,7 +62,7 @@ const main = async () => {
     transports: ['websocket'],
   });
 
-  const game = new GameServer(RAPIER, io, repo, new GuestAuthProvider());
+  const game = new GameServer(RAPIER, io, repo, new GuestAuthProvider(), { groupRepo: new SqliteGroupRepository(db) });
   await game.enableZombies(path.resolve(serverRoot, 'data'));
   game.start();
   admin = createAdmin(path.resolve(serverRoot, 'data'), game, repo);

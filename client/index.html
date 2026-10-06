@@ -30,7 +30,7 @@
             <label>Mouse sensitivity <span data-out="sensitivity"></span><input type="range" data-setting="sensitivity" min="0.2" max="3" step="0.05" /></label>
             <label>Field of view <span data-out="fov"></span><input type="range" data-setting="fov" min="60" max="100" step="1" /></label>
           </details>
-          <p class="hint">WASD move · Mouse look · Double-tap W sprint · Shift crouch · Space jump · LMB attack/use · RMB aim · R reload · V camera · E use · Tab inventory · 1-9 hotbar · Q drop · Esc pause</p>
+          <p class="hint">WASD move · Mouse look · Double-tap W sprint · Shift crouch · Space jump · LMB attack/use · RMB aim · R reload · V camera · E use · Tab inventory · 1-9 hotbar · Q drop · Enter chat · G group · M map · F3 debug info · Esc pause</p>
         </div>
       </section>
 
@@ -50,6 +50,12 @@
         <div class="vh-keys">W/S drive · A/D steer · Space brake · E get out · V camera</div>
       </div>
       <div id="killfeed"></div>
+        <div id="compass"></div>
+        <canvas id="minimap" width="190" height="190"></canvas>
+        <div id="chat">
+          <div id="chat-log"></div>
+          <div id="chat-input-row" class="hidden"><span id="chat-channel" class="chat-chan">All</span><input id="chat-input" autocomplete="off" /></div>
+        </div>
         <div id="prompt" class="hidden"><kbd>E</kbd> <span id="prompt-text"></span></div>
         <div id="vignette"></div>
         <div id="stats">
@@ -60,7 +66,7 @@
           <div class="bar"><span class="label">STA</span><div class="track"><div id="stamina-fill" class="fill stamina"></div></div></div>
         </div>
         <div id="use-progress" class="hidden"><span id="use-label"></span><div class="track"><div id="use-fill"></div></div></div>
-        <pre id="debug"></pre>
+        <pre id="debug" class="hidden"></pre>
         <div id="held-name"></div>
         <div id="hotbar"></div>
         <div id="toast"></div>
@@ -93,6 +99,20 @@
         </div>
         <p class="inv-help">Drag to move · Ctrl+drag to split · Right-click to quick-move · Drag outside to drop · Tab to close</p>
         <div id="tooltip" class="hidden"></div>
+      </section>
+
+      <!-- Group panel (G) -->
+      <section id="group-panel" class="screen hidden">
+        <div class="panel gp-card">
+          <div class="panel-head"><h3>Group</h3><span class="gp-help">G or Esc to close</span></div>
+          <div id="group-body"></div>
+        </div>
+      </section>
+
+      <!-- Full map (M) -->
+      <section id="bigmap" class="screen hidden">
+        <canvas id="bigmap-canvas"></canvas>
+        <p class="inv-help">M or Esc to close · green = teammates</p>
       </section>
 
       <!-- Death screen -->

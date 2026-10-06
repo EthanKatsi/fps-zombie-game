@@ -33,4 +33,18 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 2,
+    name: 'groups',
+    sql: `
+      CREATE TABLE groups (
+        id          TEXT PRIMARY KEY,
+        name        TEXT NOT NULL,
+        name_key    TEXT NOT NULL UNIQUE,
+        leader_id   TEXT NOT NULL,
+        created_at  INTEGER NOT NULL
+      );
+      CREATE INDEX players_group ON players (group_id);
+    `,
+  },
 ];

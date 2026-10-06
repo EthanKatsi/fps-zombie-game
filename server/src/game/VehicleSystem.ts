@@ -1,7 +1,9 @@
 import type { Collider, World } from '@dimforge/rapier3d-compat';
 import {
   MOVEMENT,
+  GROUPS,
   getItemDef,
+  sameGroup,
   PLAYER_GROUPS,
   PVP,
   VEHICLES,
@@ -278,6 +280,7 @@ export class VehicleSystem {
       if (!ready(key) || !this.touches(v, p.state.pos, MOVEMENT.radius)) continue;
       const driver = v.driver;
       if (driver && (!PVP.enabled || now < p.protectedUntil)) continue;
+      if (driver && !GROUPS.friendlyFire && sameGroup(driver.record.groupId, p.record.groupId)) continue;
       v.hitCooldown.set(key, now + 700);
       this.survival.damage(p, dmg, driver ? 'player' : 'unknown', driver, false, v.state.pos, { weapon: 'vehicle' });
       hits++;

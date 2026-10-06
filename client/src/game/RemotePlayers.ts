@@ -50,7 +50,8 @@ const makeHeld = (defId: string): THREE.Object3D | null => {
   return mesh;
 };
 
-const makeNameTag = (name: string): THREE.Sprite => {
+/** Floating name tag. Teammates' are green and drawn through walls. */
+export const makeNameTag = (name: string, teammate = false): THREE.Sprite => {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 64;
@@ -61,12 +62,13 @@ const makeNameTag = (name: string): THREE.Sprite => {
   ctx.lineWidth = 6;
   ctx.strokeStyle = 'rgba(0,0,0,0.85)';
   ctx.strokeText(name, 128, 32);
-  ctx.fillStyle = '#e8e3d4';
+  ctx.fillStyle = teammate ? '#8be08b' : '#e8e3d4';
   ctx.fillText(name, 128, 32);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: true, transparent: true }));
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: !teammate, transparent: true }));
   sprite.scale.set(1.6, 0.4, 1);
+  if (teammate) sprite.renderOrder = 20;
   return sprite;
 };
 
@@ -74,7 +76,8 @@ class RemotePlayer {
   readonly root = new THREE.Group();
   private readonly body: CharacterBody;
   private readonly ownMaterials: THREE.Material[];
-  private readonly tag: THREE.Sprite;
+  private tag: THREE.Sprite;
+  private teammate = false;
   private buffer: Sample[] = [];
   private crouchBlend = 0;
   /** Held weapon anchor at chest height (follows the aim pitch). */
@@ -85,7 +88,7 @@ class RemotePlayer {
   private last: { x: number; z: number } | null = null;
   private hits = -1;
 
-  constructor(readonly id: string, name: string, models: ModelLibrary | null) {
+  constructor(readonly id: string, readonly name: string, models: ModelLibrary | null) {
     const look = lookForPlayer(id);
     this.ownMaterials = [look.skin, look.shirt, look.pants, look.shoes];
     this.body = models?.createPlayer() ?? new Humanoid(look, { zombie: false, limp: 0, hunch: 0, reach: 0, flail: false });
@@ -111,6 +114,19 @@ class RemotePlayer {
   /** Quick swing/recoil jolt of the held item when this player attacks. */
   playAttack(): void {
     this.attackT = 1;
+  }
+
+  /** Teammates get a green name tag that shows through walls. */
+  setTeammate(on: boolean): void {
+    if (on === this.teammate) return;
+    this.teammate = on;
+    const y = this.tag.position.y;
+    this.root.remove(this.tag);
+    (this.tag.material as THREE.SpriteMaterial).map?.dispose();
+    this.tag.material.dispose();
+    this.tag = makeNameTag(this.name, on);
+    this.tag.position.y = y;
+    this.root.add(this.tag);
   }
 
   /** World position of the held item's tip (muzzle flash source). */
@@ -359,7 +375,17 @@ export class RemotePlayers {
 
   update(serverNow: number, dt: number, vehicles?: VehiclesView): void {
     const renderTime = serverNow - NETWORK.interpolationDelayMs;
-    for (const p of this.players.values()) p.update(renderTime, dt, vehicles);
+    for (const p of this.players.values()) {
+      p.setTeammate(this.teammates.has(p.id));
+      p.update(renderTime, dt, vehicles);
+    }
+  }
+
+  /** Ids of players in our group. */
+  teammates = new Set<string>();
+
+  has(id: string): boolean {
+    return this.players.has(id);
   }
 
   get(id: string): RemotePlayer | undefined {
