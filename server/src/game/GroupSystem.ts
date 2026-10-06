@@ -263,7 +263,10 @@ export class GroupSystem {
   private removeMember(g: LiveGroup, playerId: string): void {
     g.members.delete(playerId);
     const online = this.online(playerId);
-    if (online) online.record.groupId = null;
+    if (online) {
+      online.record.groupId = null;
+      online.socket.emit('teammates', []); // stop showing former teammates
+    }
     void this.repo.setMembership(playerId, null);
     if (g.members.size === 0) {
       this.groups.delete(g.id);
@@ -286,7 +289,7 @@ export class GroupSystem {
     this.lastTeammates = now;
     for (const g of this.groups.values()) {
       const online = this.onlineMembers(g);
-      if (online.length < 2) continue;
+      if (online.length === 0) continue;
       const all: TeammatePos[] = online.map((m) => ({
         id: m.id,
         name: m.username,

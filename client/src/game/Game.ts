@@ -352,14 +352,15 @@ export class Game {
       this.groupPanel.setGroup(g);
       this.chat.setInGroup(!!g);
       this.remotes.teammates = new Set((g?.members ?? []).map((m) => m.id).filter((id) => id !== join.playerId));
-      if (!g) this.teammates = [];
+      // Forget anyone who is no longer in the group right away (kicked / left / we left).
+      this.teammates = this.teammates.filter((t) => this.remotes.teammates.has(t.id));
     });
     s.on('groupInvite', (inv) => {
       this.groupPanel.addInvite(inv);
       this.chat.add({ channel: 'system', from: null, text: `${inv.from} invited you to join "${inv.groupName}". Press G to answer.`, at: Date.now() });
       this.ui.toast(`Group invite from ${inv.from} (press G)`);
     });
-    s.on('teammates', (list) => (this.teammates = list));
+    s.on('teammates', (list) => (this.teammates = list.filter((t) => this.remotes.teammates.has(t.id))));
     s.on('died', (info) => {
       this.dead = true;
       if (this.inventoryUI.isOpen) this.closeInventory(false);

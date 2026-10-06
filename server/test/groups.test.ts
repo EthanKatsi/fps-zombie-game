@@ -187,3 +187,18 @@ test('leaving hands over leadership; the last one out disbands; groups persist',
   const after = await groupRepo.loadAll();
   assert.ok(!after.some((x) => x.id === gid), 'disbanded group deleted');
 });
+
+test('a kicked player stops getting teammate positions (and the group stops getting theirs)', async () => {
+  const a = await connect('kickLeader');
+  const b = await connect('kickMe');
+  a.c.emit('group', { op: 'create', name: 'Short Lived' });
+  await until(() => !!a.state.g);
+  const inv = new Promise<{ groupId: string }>((r) => b.c.once('groupInvite', r));
+  a.c.emit('group', { op: 'invite', username: 'kickMe' });
+  b.c.emit('group', { op: 'accept', groupId: (await inv).groupId });
+  assert.ok(await until(() => a.mates.list.length === 1 && b.mates.list.length === 1), 'both see each other');
+
+  a.c.emit('group', { op: 'kick', playerId: b.p.id });
+  assert.ok(await until(() => b.state.g === null && b.mates.list.length === 0), 'kicked player sees no teammates');
+  assert.ok(await until(() => a.mates.list.length === 0), 'leader no longer gets their position');
+});

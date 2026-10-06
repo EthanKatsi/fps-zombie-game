@@ -33,7 +33,8 @@ export class TeammateMarkers {
   update(list: TeammatePos[], me: THREE.Vector3, shown: (id: string) => boolean, dt: number): void {
     const seen = new Set<string>();
     for (const t of list) {
-      if (shown(t.id)) continue;
+      // Drawn as a character already, or dead (their tag would hang over the body).
+      if (shown(t.id) || !t.alive) continue;
       seen.add(t.id);
       let m = this.markers.get(t.id);
       if (!m) {
