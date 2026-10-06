@@ -8,6 +8,8 @@ import { io as ioc, type Socket } from 'socket.io-client';
 import {
   PROTOCOL_VERSION,
   doorPose,
+  doorPanelHits,
+  MOVEMENT,
   type ClientToServerEvents,
   type JoinAccepted,
   type ServerToClientEvents,
@@ -57,7 +59,7 @@ test('join reports the city map, its hash and open doors', async () => {
 test('doors toggle only when the player is close enough', async () => {
   const { c, join } = await connect('doorman');
   const door = game.map.doors.find((d) => !game.doors.open[d.id])!;
-  const changes: { id: number; open: boolean }[] = [];
+  const changes: { id: number; open: boolean; dir: number }[] = [];
   c.on('doorChanged', (m) => changes.push(m));
 
   // Far away: ignored.
@@ -75,19 +77,32 @@ test('doors toggle only when the player is close enough', async () => {
   c.emit('interact', { kind: 'door', id: door.id });
   await sleep(300);
   assert.equal(game.doors.open[door.id], true);
-  assert.deepEqual(changes.at(-1), { id: door.id, open: true });
+  assert.deepEqual(changes.at(-1), { id: door.id, open: true, dir: 1 });
 });
 
-test('a door will not swing through a player standing in its path', async () => {
+test('a door opens away from you even when you stand right against it', async () => {
   const { c, join } = await connect('blocker');
-  const door = game.map.doors.find((d) => !game.doors.open[d.id])!;
+  const door = game.map.doors.find((d) => !game.doors.open[d.id] && !d.startsOpen)!;
   const p = game.players.get(join.playerId)!;
-  // Stand where the opened panel would end up: along the open direction, half a door out.
-  const open = doorPose(door, 1);
-  p.teleport({ x: open.x, y: door.hinge[1] + 0.05, z: open.z });
+  // Pressed against the closed door on the side it normally swings towards.
+  const closed = doorPose(door, 0);
+  const openYaw = door.yaw + door.swing * (Math.PI / 2);
+  const ox = Math.cos(openYaw), oz = -Math.sin(openYaw);
+  const at = { x: closed.x + ox * 0.4, z: closed.z + oz * 0.4 };
+  p.teleport({ x: at.x, y: door.hinge[1] + 0.05, z: at.z });
+  const changed = new Promise<{ id: number; open: boolean; dir: number }>((r) => c.once('doorChanged', r));
+  c.emit('interact', { kind: 'door', id: door.id });
+  const msg = await changed;
+  assert.equal(game.doors.open[door.id], true, 'opened');
+  assert.equal(msg.dir, -1, 'swung the other way, away from the player');
+  assert.ok(!doorPanelHits(door, -1, at.x, at.z, MOVEMENT.radius), 'panel clear of the player');
+
+  // Standing in the doorway: it won't close on you.
+  p.teleport({ x: closed.x, y: door.hinge[1] + 0.05, z: closed.z });
+  await sleep(500);
   c.emit('interact', { kind: 'door', id: door.id });
   await sleep(300);
-  assert.equal(game.doors.open[door.id], false);
+  assert.equal(game.doors.open[door.id], true, 'still open');
 });
 
 test('unknown or malformed door ids are ignored', async () => {

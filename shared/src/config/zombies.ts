@@ -2,23 +2,24 @@ import type { ZombieType, ZombieTypeDef } from '../types/zombie';
 
 /**
  * Zombie balance. Speeds are m/s (players walk 4.2, sprint 7.0).
- * Runners are faster than a walking player but slower than a sprinting one.
+ * All of them are slower than a walking player (owner request: zombies shouldn't be that fast);
+ * runners are the only ones that keep up with someone who stops to fight.
  */
 export const ZOMBIE_TYPES: Record<ZombieType, ZombieTypeDef> = {
   walker: {
-    type: 'walker', health: 80, walkSpeed: 0.8, chaseSpeed: 2.7,
+    type: 'walker', health: 80, walkSpeed: 0.6, chaseSpeed: 1.6,
     attackDamage: 12, attackRange: 1.5, attackCooldownMs: 1300, attackWindupMs: 450,
     visionRange: 28, visionFov: 120, hearingMultiplier: 1.0, headshotMultiplier: 2.5,
     scale: 1.0, spawnWeight: 70,
   },
   runner: {
-    type: 'runner', health: 55, walkSpeed: 1.2, chaseSpeed: 5.6,
+    type: 'runner', health: 55, walkSpeed: 0.9, chaseSpeed: 3.4,
     attackDamage: 9, attackRange: 1.4, attackCooldownMs: 900, attackWindupMs: 300,
     visionRange: 36, visionFov: 140, hearingMultiplier: 1.2, headshotMultiplier: 2.5,
     scale: 0.95, spawnWeight: 20,
   },
   bloater: {
-    type: 'bloater', health: 260, walkSpeed: 0.6, chaseSpeed: 1.9,
+    type: 'bloater', health: 260, walkSpeed: 0.45, chaseSpeed: 1.1,
     attackDamage: 26, attackRange: 1.8, attackCooldownMs: 1800, attackWindupMs: 650,
     visionRange: 20, visionFov: 100, hearingMultiplier: 0.8, headshotMultiplier: 1.6,
     scale: 1.25, spawnWeight: 10,

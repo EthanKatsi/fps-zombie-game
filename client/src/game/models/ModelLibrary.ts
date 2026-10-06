@@ -138,6 +138,22 @@ export class ModelLibrary {
             }
           }),
         );
+        // Animations from other files may use other units (FBX cm vs glTF m): scale their position
+        // tracks so the hips' first frame matches the model's own rest hips height.
+        let hipsRest = 0;
+        base.scene.traverse((o) => {
+          if (!hipsRest && /hips|pelvis/i.test(o.name)) hipsRest = o.position.length();
+        });
+        const matchUnits = (clip: THREE.AnimationClip) => {
+          const hips = clip.tracks.find((t) => t.name.endsWith('.position') && /hips|pelvis/i.test(t.name));
+          if (!hips || !hipsRest) return;
+          const first = Math.hypot(hips.values[0], hips.values[1], hips.values[2]);
+          const ratio = hipsRest / Math.max(first, 1e-6);
+          if (Math.abs(Math.log(ratio)) < 0.3) return;
+          for (const t of clip.tracks) if (t.name.endsWith('.position')) for (let i = 0; i < t.values.length; i++) t.values[i] *= ratio;
+        };
+        const fileClips = new Set(Object.values(variants).flat());
+        fileClips.forEach((c) => c && matchUnits(c));
         all.forEach(stripRootMotion);
         for (const list of Object.values(variants)) list?.forEach(stripRootMotion);
         const clips = pickClips(all, { ...entry, clips: { ...Object.fromEntries(Object.keys(entry.animations ?? {}).map((k) => [k, k])), ...entry.clips } });

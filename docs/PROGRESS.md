@@ -327,6 +327,23 @@ Everything is generated in code (no downloaded assets):
     drops.
   - Test: `server/test/survival.test.ts` "armour: ...".
 
+## Extra: slower zombies, push-away doors, converted zombie model (requested after M7)
+
+- **Zombie speeds lowered** (owner: "don't make the zombies that fast"). Chase speeds are now 1.6 (walker),
+  3.4 (runner) and 1.1 (bloater) m/s; walk speeds are 0.6 / 0.9 / 0.45. All are below a walking player (4.2).
+- **Doors open away from you** however close you stand (owner request).
+  - `DoorColliders.dir` (1 / -1) and `doorPose(def, ±1)` let a door swing either way.
+  - The server picks `doorAwayDir` for the user and falls back to the other way only if a player would end up
+    inside the panel (`doorPanelHits`).
+  - Closing is refused only when someone stands in the doorway.
+  - Protocol v10: `doorChanged.dir` and `JoinAccepted.reversedDoors`.
+- **Zombie model**: the owner's Mixamo `X Bot.fbx` is FBX 6.1, which three.js can't read. It was converted to
+  `client/public/models/zombie1/character.glb` with FBX2glTF (`npx fbx2gltf`, npm package `fbx2gltf@0.9.7`;
+  it reads old FBX files).
+  - `ModelLibrary` rescales the position tracks of animations loaded from separate files to the model's hips
+    rest height, because FBX animations are in cm while the converted glTF is in m.
+  - Models are gitignored, so only the loader change is committed.
+
 ## Extra: assault rifle (requested after M7)
 
 - An `assault_rifle` item plus weapon. It's the first **full-auto** weapon (`WeaponDef.automatic`: hold to fire):

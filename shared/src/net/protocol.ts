@@ -5,7 +5,7 @@ import type { SurvivalStats } from '../types/player';
 import type { MoveInput, MoveState } from '../sim/movement';
 
 /** Bump when the wire format changes; server rejects mismatched clients. */
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 10;
 
 // ---------- Client -> Server ----------
 
@@ -52,6 +52,8 @@ export interface JoinAccepted {
   mapHash: string;
   /** Ids of doors that are currently open. */
   openDoors: number[];
+  /** Of those, the ones opened the reversed way (swung away from whoever opened them). */
+  reversedDoors: number[];
   players: PlayerInfo[];
   inventory: Inventory;
   stats: NetStats;
@@ -185,7 +187,7 @@ export interface ServerToClientEvents {
   playerJoined: (msg: PlayerInfo) => void;
   playerLeft: (msg: { id: PlayerId }) => void;
   clockPong: (clientTime: number, serverTime: number) => void;
-  doorChanged: (msg: { id: number; open: boolean }) => void;
+  doorChanged: (msg: { id: number; open: boolean; dir: 1 | -1 }) => void;
   /** Full inventory after any change (it's small). */
   inventory: (inv: Inventory) => void;
   containerOpened: (c: ContainerView) => void;

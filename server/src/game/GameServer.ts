@@ -10,7 +10,8 @@ import {
   TICK_DT,
   buildMapColliders,
   doorPose,
-  doorSweepBlocked,
+  doorAwayDir,
+  doorPanelHits,
   eyeHeight,
   hashMap,
   loadMap,
@@ -239,6 +240,7 @@ export class GameServer {
         mapSeed: this.map.seed,
         mapHash: this.mapHash,
         openDoors: this.doors.openIds(),
+        reversedDoors: this.doors.reversedIds(),
         inventory: player.inventory,
         stats: netStats(player),
         shotSalt: player.shotSalt,
@@ -290,16 +292,29 @@ export class GameServer {
     const eyeY = p.state.pos.y + eyeHeight(p.state.crouching);
     const dist = Math.hypot(pose.x - p.state.pos.x, pose.y - eyeY, pose.z - p.state.pos.z);
     if (dist > DOOR_USE_RANGE + 0.5) return;
-    // Don't swing a door through anyone standing in its path.
-    for (const other of this.players.values()) {
-      const o = other.state.pos;
-      if (Math.abs(o.y - def.hinge[1]) > def.height) continue;
-      if (doorSweepBlocked(def, o.x, o.z, MOVEMENT.radius)) return;
+    // The door must not end up inside anyone. Opening swings it away from the user (however close
+    // they stand), or the other way if someone is in the way there.
+    const hits = (amount: number) => {
+      for (const other of this.players.values()) {
+        const o = other.state.pos;
+        if (!other.alive || Math.abs(o.y - def.hinge[1]) > def.height) continue;
+        if (doorPanelHits(def, amount, o.x, o.z, MOVEMENT.radius)) return true;
+      }
+      return false;
+    };
+    let dir = this.doors.dir[id] ?? 1;
+    if (open) {
+      if (hits(0)) return; // someone is standing in the doorway
+    } else {
+      const away = doorAwayDir(def, p.state.pos.x, p.state.pos.z);
+      const choice = [away, -away as 1 | -1].find((d) => !hits(d));
+      if (!choice) return;
+      dir = choice;
     }
-    this.doors.set(id, !open);
+    this.doors.set(id, !open, dir);
     this.doorsDirty = true;
     this.doorBusyUntil.set(id, now + 450);
-    this.io.emit('doorChanged', { id, open: !open });
+    this.io.emit('doorChanged', { id, open: !open, dir });
   }
 
   private randomSpawn(): Vec3 {

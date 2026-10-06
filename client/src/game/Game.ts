@@ -176,10 +176,11 @@ export class Game {
     this.doorColliders = new DoorColliders(R, this.world, this.map.doors);
     const open = new Set(join.openDoors);
     for (const d of this.map.doors) {
-      if (this.doorColliders.open[d.id] !== open.has(d.id)) this.doorColliders.set(d.id, open.has(d.id));
+      const dir = join.reversedDoors?.includes(d.id) ? -1 : 1;
+      if (this.doorColliders.open[d.id] !== open.has(d.id) || dir !== 1) this.doorColliders.set(d.id, open.has(d.id), dir);
     }
     this.world.step();
-    this.doorRenderer = new DoorRenderer(this.map.doors, this.doorColliders.open, worldMat);
+    this.doorRenderer = new DoorRenderer(this.map.doors, this.doorColliders.open, this.doorColliders.dir, worldMat);
     this.scene.add(this.doorRenderer.mesh);
     this.containerIndex = new ContainerIndex(this.map.containers);
     this.groundItems = new GroundItemsView(this.scene);
@@ -249,10 +250,10 @@ export class Game {
       this.remotes.remove(id);
       this.online = Math.max(1, this.online - 1);
     });
-    s.on('doorChanged', ({ id, open: isOpen }) => {
-      this.doorColliders.set(id, isOpen);
+    s.on('doorChanged', ({ id, open: isOpen, dir }) => {
+      this.doorColliders.set(id, isOpen, dir ?? 1);
       this.world.step(); // keep the prediction world's scene queries in sync
-      this.doorRenderer.setOpen(id, isOpen);
+      this.doorRenderer.setOpen(id, isOpen, dir ?? 1);
     });
     s.on('inventory', (inv) => this.inventoryUI.setInventory(inv));
     s.on('containerOpened', (c) => {

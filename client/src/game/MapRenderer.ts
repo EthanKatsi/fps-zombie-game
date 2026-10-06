@@ -174,14 +174,15 @@ export class DoorRenderer {
   private readonly target: number[];
   private readonly animating = new Set<number>();
 
-  constructor(private readonly doors: DoorDef[], open: boolean[], worldMat: THREE.Material) {
+  constructor(private readonly doors: DoorDef[], open: boolean[], dir: number[], worldMat: THREE.Material) {
     const geo = SHAPES.box.clone();
     const attrs = surfaceAttributes(doors.map(() => 'door'));
     geo.setAttribute('aTex', attrs.tex);
     geo.setAttribute('aSurf', attrs.surf);
     this.mesh = new THREE.InstancedMesh(geo, worldMat, Math.max(1, doors.length));
     this.mesh.count = doors.length;
-    this.amount = open.map((o) => (o ? 1 : 0));
+    // Signed: 1 = open the default way, -1 = open the reversed way.
+    this.amount = open.map((o, i) => (o ? (dir[i] ?? 1) : 0));
     this.target = [...this.amount];
     doors.forEach((d, i) => {
       this.writeMatrix(i);
@@ -197,8 +198,8 @@ export class DoorRenderer {
   private writeMatrix(i: number): void {
     const d = this.doors[i];
     // Ease in/out so the swing doesn't look linear.
-    const a = this.amount[i];
-    const eased = a * a * (3 - 2 * a);
+    const a = Math.abs(this.amount[i]);
+    const eased = Math.sign(this.amount[i]) * a * a * (3 - 2 * a);
     const pose = doorPose(d, eased);
     tmp.p.set(pose.x, pose.y, pose.z);
     tmp.e.set(0, pose.yaw, 0, 'YXZ');
@@ -207,8 +208,8 @@ export class DoorRenderer {
     this.mesh.setMatrixAt(i, tmp.m.compose(tmp.p, tmp.q, tmp.s));
   }
 
-  setOpen(id: number, open: boolean): void {
-    this.target[id] = open ? 1 : 0;
+  setOpen(id: number, open: boolean, dir: 1 | -1 = 1): void {
+    this.target[id] = open ? dir : 0;
     this.animating.add(id);
   }
 
