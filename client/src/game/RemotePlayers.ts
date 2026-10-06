@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { ITEM_CATEGORY_COLORS, MOVEMENT, NETWORK, PlayerFlags, getItemDef, lerp, lerpAngle, type NetPlayer } from '@grey/shared';
 import { Humanoid, type CharacterBody, type HumanoidLook } from './anim/Humanoid';
 import type { ModelLibrary } from './models/ModelLibrary';
+import type { VehiclesView } from './VehiclesView';
 
 interface Sample {
   t: number;
@@ -129,6 +130,7 @@ class RemotePlayer {
       pitch: n.pitch,
       crouch: (n.f & PlayerFlags.crouching) !== 0,
     });
+    this.seat = n.v ?? -1;
     this.setHeld(n.h ?? '');
     this.body.setArmor?.((n.f & PlayerFlags.helmet) !== 0, (n.f & PlayerFlags.vest) !== 0);
     if (this.hits >= 0 && n.hc !== this.hits) this.body.hit();
@@ -136,8 +138,11 @@ class RemotePlayer {
     if (this.buffer.length > 40) this.buffer.splice(0, this.buffer.length - 40);
   }
 
+  /** vehicleId * 8 + seat while seated, else -1. */
+  private seat = -1;
+
   /** Render `renderTime` (server ms) by interpolating between the bracketing snapshots. */
-  update(renderTime: number, dt: number): void {
+  update(renderTime: number, dt: number, vehicles?: VehiclesView): void {
     const b = this.buffer;
     if (b.length === 0) return;
     let s: Sample;
@@ -167,6 +172,24 @@ class RemotePlayer {
     const height = lerp(MOVEMENT.standHeight, MOVEMENT.crouchHeight, this.crouchBlend);
     this.root.position.set(s.x, s.y, s.z);
     this.root.rotation.y = s.yaw;
+    // Seated: stick to the seat of the (separately interpolated) vehicle, facing its way.
+    if (this.seat >= 0 && vehicles) {
+      const vid = this.seat >> 3, seat = this.seat & 7;
+      const feet = vehicles.seatFeet(vid, seat);
+      const pose = vehicles.pose(vid);
+      if (feet && pose) {
+        this.root.position.set(feet.x, feet.y, feet.z);
+        this.root.rotation.y = pose.yaw;
+        const def = this.heldId ? getItemDef(this.heldId) : undefined;
+        const gun = seat > 0 && def?.category === 'ranged';
+        this.body.update({ localDx: 0, localDz: 0, dt, crouch: 0, aimPitch: s.pitch, holding: gun ? 'gun' : 'none', attacking: false, dead: false, seated: true });
+        this.hand.visible = gun;
+        this.tag.position.y = 1.55;
+        this.last = { x: feet.x, z: feet.z };
+        return;
+      }
+    }
+    this.hand.visible = true;
 
     // Body animation from this frame's movement in the player's own frame.
     const dx = this.last ? s.x - this.last.x : 0;
@@ -255,9 +278,16 @@ export class LocalAvatar {
     return out.applyMatrix4(this.hand.matrixWorld);
   }
 
-  update(feet: THREE.Vector3, yaw: number, pitch: number, crouching: boolean, dead: boolean, dt: number): void {
+  update(feet: THREE.Vector3, yaw: number, pitch: number, crouching: boolean, dead: boolean, dt: number, seat?: { yaw: number; gun: boolean }): void {
     this.root.position.copy(feet);
     this.root.rotation.y = yaw;
+    if (seat) {
+      this.root.rotation.y = seat.yaw;
+      this.body.update({ localDx: 0, localDz: 0, dt, crouch: 0, aimPitch: pitch, holding: seat.gun ? 'gun' : 'none', attacking: false, dead, seated: true });
+      this.hand.visible = seat.gun;
+      this.last = { x: feet.x, z: feet.z };
+      return;
+    }
     this.crouchBlend += ((crouching ? 1 : 0) - this.crouchBlend) * (1 - Math.exp(-dt * 12));
     const height = lerp(MOVEMENT.standHeight, MOVEMENT.crouchHeight, this.crouchBlend);
     const dx = this.last ? feet.x - this.last.x : 0;
@@ -327,9 +357,9 @@ export class RemotePlayers {
     for (const id of [...this.players.keys()]) if (!seen.has(id)) this.despawn(id);
   }
 
-  update(serverNow: number, dt: number): void {
+  update(serverNow: number, dt: number, vehicles?: VehiclesView): void {
     const renderTime = serverNow - NETWORK.interpolationDelayMs;
-    for (const p of this.players.values()) p.update(renderTime, dt);
+    for (const p of this.players.values()) p.update(renderTime, dt, vehicles);
   }
 
   get(id: string): RemotePlayer | undefined {

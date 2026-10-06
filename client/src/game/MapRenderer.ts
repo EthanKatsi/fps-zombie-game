@@ -20,6 +20,8 @@ const PALETTE: Record<string, number> = {
   car_black: 0x222324, car_glass: 0x1c2125,
   sign_green: 0x2f6b3a, sign_white: 0xd6d4cb, sign_orange: 0xb3631d, sign_red: 0x8e1f1a, sign_blue: 0x29466e,
   door: 0x5f4a35, sandbag: 0x8f8360, police_blue: 0x1f3f8a, light_red: 0xb3261e,
+  forest_floor: 0x4d4632, dirt: 0x6b5a43, pine: 0x2b3a25, rock: 0x6c6964, car_burnt: 0x1e1c1a,
+  tent: 0x5a5e3f, military: 0x4a5237,
 };
 const MISSING = 0xff00ff;
 
@@ -30,13 +32,15 @@ const jitter = (i: number): number => {
   return 0.92 + ((h >>> 0) % 1000) / 1000 * 0.16;
 };
 
-type Shape = 'box' | 'blob' | 'trunk';
-/** Foliage renders as lumpy blobs and trunks as cylinders; everything else is a box. */
-const shapeOf = (m: string): Shape => (m === 'leaves' || m === 'bush' ? 'blob' : m === 'bark' ? 'trunk' : 'box');
+type Shape = 'box' | 'blob' | 'trunk' | 'cone';
+/** Foliage and rocks render as lumpy blobs, trunks as cylinders, pines as cones; everything else is a box. */
+const shapeOf = (m: string): Shape =>
+  m === 'leaves' || m === 'bush' || m === 'rock' ? 'blob' : m === 'bark' ? 'trunk' : m === 'pine' ? 'cone' : 'box';
 const SHAPES: Record<Shape, THREE.BufferGeometry> = {
   box: new THREE.BoxGeometry(1, 1, 1),
   blob: new THREE.IcosahedronGeometry(0.5, 2),
   trunk: new THREE.CylinderGeometry(0.42, 0.5, 1, 9),
+  cone: new THREE.ConeGeometry(0.5, 1, 10, 1, true),
 };
 // Make the foliage blobs irregular (deterministic per vertex).
 {
@@ -86,6 +90,7 @@ const buildInstanced = (boxes: MapBox[], shape: Shape, mat: THREE.Material, shad
 
 interface Chunk {
   center: THREE.Vector3;
+  group: THREE.Group;
   detail: THREE.Group;
 }
 
@@ -147,7 +152,7 @@ export class MapRenderer {
       for (const [shape, list] of bucket.detail) detail.add(buildInstanced(list, shape, worldMat, true, (salt += 7919)));
       chunkGroup.add(detail);
       this.root.add(chunkGroup);
-      this.chunks.push({ center: new THREE.Vector3((cx + 0.5) * size, 0, (cz + 0.5) * size), detail });
+      this.chunks.push({ center: new THREE.Vector3((cx + 0.5) * size, 0, (cz + 0.5) * size), group: chunkGroup, detail });
     }
   }
 
@@ -155,10 +160,15 @@ export class MapRenderer {
   update(camera: THREE.Vector3): void {
     const maxD = RENDER.detailDistance + RENDER.chunkSize * 0.7;
     const maxD2 = maxD * maxD;
+    // Whole chunks past the far plane are skipped entirely (the world is large).
+    const farD = RENDER.cameraFar + RENDER.chunkSize * 0.75;
+    const farD2 = farD * farD;
     for (const c of this.chunks) {
       const dx = c.center.x - camera.x;
       const dz = c.center.z - camera.z;
-      c.detail.visible = dx * dx + dz * dz < maxD2;
+      const d2 = dx * dx + dz * dz;
+      c.group.visible = d2 < farD2;
+      c.detail.visible = d2 < maxD2;
     }
   }
 

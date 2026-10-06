@@ -35,6 +35,8 @@ export interface AnimInput {
   holding: 'none' | 'gun' | 'melee' | 'item';
   attacking: boolean;
   dead: boolean;
+  /** Sitting in a vehicle seat (the root is at the seat minus SEAT_HIP). */
+  seated?: boolean;
 }
 
 const capsule = (r: number, len: number) => new THREE.CapsuleGeometry(r, len, 4, 10);
@@ -223,6 +225,10 @@ export class Humanoid implements CharacterBody {
     this.deadT = -1;
     this.root.rotation.set(0, 0, 0);
     this.root.position.y = 0;
+    if (a.seated) {
+      this.poseSeated(a, dt);
+      return;
+    }
 
     // ------------------------------------------------------------- gait
     const dist = Math.hypot(a.localDx, a.localDz);
@@ -322,6 +328,30 @@ export class Humanoid implements CharacterBody {
       this.shoulder[i].rotation.x = approach(this.shoulder[i].rotation.x, shX - fl * 0.4, 18, dt);
       this.shoulder[i].rotation.z = approach(this.shoulder[i].rotation.z, shZ, 18, dt);
       this.elbow[i].rotation.x = approach(this.elbow[i].rotation.x, elX, 18, dt);
+    }
+  }
+
+  /** Sitting: thighs forward, shins down, hands on the wheel (or holding a gun). */
+  private poseSeated(a: AnimInput, dt: number): void {
+    this.hips.position.y = 0.5;
+    this.hips.rotation.set(0, 0, 0);
+    this.spine.rotation.set(-0.06, 0, 0);
+    this.chest.rotation.x = 0;
+    this.neck.rotation.x = -a.aimPitch * 0.8;
+    this.neck.rotation.z = 0;
+    for (const i of [0, 1] as const) {
+      const side = i === 0 ? -1 : 1;
+      this.hip[i].rotation.x = 1.45;
+      this.hip[i].rotation.z = side * 0.06;
+      this.knee[i].rotation.x = -1.4;
+      this.ankle[i].rotation.x = 0;
+      const gun = a.holding === 'gun';
+      const shX = gun ? 1.35 + a.aimPitch * 0.9 + (i === 0 ? 0.15 : 0) : 1.05;
+      const shZ = gun ? side * (i === 0 ? -0.55 : 0.05) : side * 0.1;
+      const elX = gun ? (i === 0 ? -0.55 : -1.25) : -0.55;
+      this.shoulder[i].rotation.x = approach(this.shoulder[i].rotation.x, shX, 14, dt);
+      this.shoulder[i].rotation.z = approach(this.shoulder[i].rotation.z, shZ, 14, dt);
+      this.elbow[i].rotation.x = approach(this.elbow[i].rotation.x, elX, 14, dt);
     }
   }
 

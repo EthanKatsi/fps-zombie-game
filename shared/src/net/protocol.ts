@@ -3,9 +3,11 @@ import type { ContainerKind, Inventory, InventoryOp } from '../types/inventory';
 import type { ItemStack } from '../types/item';
 import type { SurvivalStats } from '../types/player';
 import type { MoveInput, MoveState } from '../sim/movement';
+import type { VehicleState } from '../sim/vehicle';
+import type { VehicleType } from '../config/vehicles';
 
 /** Bump when the wire format changes; server rejects mismatched clients. */
-export const PROTOCOL_VERSION = 10;
+export const PROTOCOL_VERSION = 11;
 
 // ---------- Client -> Server ----------
 
@@ -28,6 +30,8 @@ export interface NetPlayer {
   h: string;
   /** Times this player has been hurt (mod 256): clients play a flinch when it changes. */
   hc: number;
+  /** Seated in a vehicle: vehicleId * 8 + seat (absent when on foot). */
+  v?: number;
 }
 
 export const PlayerFlags = {
@@ -37,7 +41,35 @@ export const PlayerFlags = {
   /** Wearing a helmet / body armour (drawn on the character). */
   helmet: 8,
   vest: 16,
+  /** Sitting in a vehicle (drawn seated; uses crouch hitboxes). */
+  seated: 32,
 } as const;
+
+/** A drivable vehicle in a snapshot (interpolated by clients). */
+export interface NetVehicle {
+  id: number;
+  /** Index into VEHICLE_TYPE_ORDER. */
+  t: number;
+  /** Ground point under the centre. */
+  p: [number, number, number];
+  yaw: number;
+  /** Forward speed (m/s) and steering (-1..1): wheel spin and steer angle. */
+  s: number;
+  st: number;
+  /** Health 0..1, and whether it's a burnt-out wreck. */
+  hp: number;
+  w: boolean;
+  /** Has a driver (engine running). */
+  d: boolean;
+}
+
+/** The vehicle the receiving player sits in (the driver reconciles its prediction against it). */
+export interface DriveInfo {
+  id: number;
+  type: VehicleType;
+  seat: number;
+  state: VehicleState;
+}
 
 export interface JoinAccepted {
   playerId: PlayerId;
@@ -129,7 +161,10 @@ export type InteractRequest =
   | { kind: 'door'; id: number }
   /** A map container (furniture / car trunk) by its ContainerSpawn id. */
   | { kind: 'container'; id: number }
-  | { kind: 'pickup'; id: string };
+  | { kind: 'pickup'; id: string }
+  /** Get into a vehicle (driver seat if free), or out of the one you're in. */
+  | { kind: 'vehicle'; id: number }
+  | { kind: 'exitVehicle' };
 
 /** An item lying in the world. */
 export interface GroundItemNet {
@@ -176,8 +211,11 @@ export interface Snapshot {
   /** Highest input seq the server has applied for the receiving player. */
   ack: number;
   you: MoveState;
+  /** Set while you are in a vehicle. */
+  drive: DriveInfo | null;
   players: NetPlayer[];
   zombies: NetZombie[];
+  vehicles: NetVehicle[];
 }
 
 export interface ServerToClientEvents {

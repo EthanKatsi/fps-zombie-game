@@ -62,8 +62,46 @@ door/window openings, floor slabs with stairwell holes, switchback stairs (visua
 ramp collider), interior cross walls with doors, and furniture chosen per room purpose. Lootable furniture
 is recorded as `ContainerSpawn`s with a `<buildingType>_<kind>` loot table id, used in milestone 3.
 
+**The full world** (`shared/src/world/generateWorld.ts`, map id `world`, the server default) is a
+1.28 km square, laid out in `WORLD` (`config/world.ts`):
+
+- The walled downtown is a city grid in the north-east, with gates on its west and south sides and army
+  checkpoints outside them. Burnt and overturned wrecks and trash piles give it the abandoned feel.
+- The suburbs are a residential grid in the south-east.
+- A big forest covers the west: pines, broadleaf trees, rocks, logs and undergrowth on a jittered grid. It has
+  cabins in clearings and a campground.
+- A gas station sits on the east-west highway. Asphalt highways and dirt roads connect everything.
+- A fence runs round the edge.
+
+Both grids come from `generateGrid` (the old city generator, parameterised) and are merged in with their ids
+renumbered. The standalone `city` and `testmap` maps still exist; the tests use them because they are small.
+
+Surfaces all collide: the meadow at -0.06, the forest floor at -0.03, and roads, lots and grid slabs at 0. The
+steps are tiny. `MapData.vehicleSpawns` lists where drivable vehicles start.
+
 Only `{mapId, seed}` goes over the wire. Client and server regenerate the same `MapData`, and the server also
 sends `hashMap()` so a diverging client is detected right away.
+
+**Vehicles** (`shared/src/sim/vehicle.ts`, `config/vehicles.ts`, `server/src/game/VehicleSystem.ts`,
+`client/src/game/VehiclesView.ts`) are server-authoritative and predicted like players:
+
+- **Physics.** `VehicleMotor` is an arcade model (throttle, brake and reverse, coasting drag, speed-dependent
+  steering, handbrake). It runs on Rapier's kinematic character controller with a box collider that reaches
+  down to the ground (autostep handles curbs).
+- **Seating.** A seated player's inputs are routed by `ServerPlayer.seatInput`. The driver's inputs step the
+  vehicle; passengers only look around.
+- **The occupant's own state** is their seat's feet position, with crouch hitboxes and `PlayerFlags.seated`.
+  `NetPlayer.v` = vehicleId * 8 + seat.
+- **Prediction.** The driver's client predicts the vehicle with the same motor and reconciles against
+  `Snapshot.drive`. Other clients interpolate `Snapshot.vehicles`.
+- **Collision.** Every vehicle has a collider (`VEHICLE_GROUPS`) in both worlds, so players bump into parked
+  cars. Vehicles collide with the world and with each other, not with players or zombies: hitting those is
+  "running over" (`VEHICLE_RULES`). Bullets ignore vehicles (`SHOT_GROUPS`).
+- **Server rules:**
+  - The server steps the world each tick that a vehicle moved, so queries see the new positions.
+  - Crashes damage the vehicle and its occupants.
+  - Wrecks eject everyone and respawn at their spawn spot after `respawnAfterSec`.
+  - Engines make noise that zombies hear.
 
 **Doors** (`world/doors.ts`) are server-authoritative. A client sends `interact {kind:'door', id}`. The server
 checks range, cooldown, and that the swing isn't blocked by a player, then broadcasts `doorChanged`. Both

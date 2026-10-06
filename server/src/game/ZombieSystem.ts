@@ -425,6 +425,13 @@ export class ZombieSystem {
     return this.zombies.get(id)?.def.headshotMultiplier ?? 2;
   }
 
+  /** Living zombies within `r` (m) of a point (vehicles running them over). */
+  aliveNear(p: Vec3, r: number): { id: number; pos: Vec3 }[] {
+    const out: { id: number; pos: Vec3 }[] = [];
+    for (const z of this.zombies.values()) if (z.state !== 'dead' && dist2(z.pos, p) < r * r) out.push({ id: z.id, pos: z.pos });
+    return out;
+  }
+
   /** Apply damage; returns true if this killed it. Getting hurt makes it come for you. */
   damage(id: number, amount: number, attacker: ServerPlayer | null, now: number): boolean {
     const z = this.zombies.get(id);

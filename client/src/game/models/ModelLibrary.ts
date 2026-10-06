@@ -285,7 +285,8 @@ export class ModelRig {
     const walkRef = this.t.entry.walkSpeed ?? (this.zombie ? 1.0 : 1.5);
     const runRef = this.t.entry.runSpeed ?? (this.zombie ? 4.5 : 5.5);
     let state: ClipName;
-    if (a.attacking) state = 'attack';
+    if (a.seated) state = this.actions.get('crouch') ? 'crouch' : 'idle';
+    else if (a.attacking) state = 'attack';
     else if (a.crouch > 0.5) state = speed > 0.3 ? 'crouchWalk' : 'crouch';
     else if (speed > (this.zombie ? 2.2 : 3.0)) state = 'run';
     else if (speed > 0.25) state = 'walk';

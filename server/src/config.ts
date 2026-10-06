@@ -17,7 +17,7 @@ export const SERVER_CONFIG = {
   /** SQLite file. Swap the repository implementation to move to Postgres. */
   dbPath: env('DB_PATH', 'data/game.db'),
   /** 'city' (default) or 'testmap'. */
-  mapId: env('MAP_ID', 'city'),
+  mapId: env('MAP_ID', 'world'),
   mapSeed: envNum('MAP_SEED', 1337),
   maxPlayers: envNum('MAX_PLAYERS', 64),
   /** Built client to serve in production (`npm run build`). */

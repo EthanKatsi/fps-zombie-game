@@ -99,6 +99,7 @@ export const createAdmin = (dataDir: string, game: GameServer, repo: PlayerRepos
 
       const online = [...game.players.values()].find((p) => p.username.toLowerCase() === body.username.toLowerCase());
       if (online) {
+        game.vehicles.onPlayerGone(online);
         online.teleport(target.pos, target.yaw);
         console.log(`[admin] teleported ${online.username} to ${JSON.stringify(target.pos)}`);
         return json(res, 200, { ok: true, online: true, ...target }), true;

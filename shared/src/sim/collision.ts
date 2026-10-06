@@ -7,6 +7,7 @@ export const Layer = {
   PLAYER: 0x0002,
   ZOMBIE: 0x0004,
   STRUCTURE: 0x0008,
+  VEHICLE: 0x0010,
 } as const;
 
 export const groups = (membership: number, filter: number): number =>
@@ -18,4 +19,10 @@ export const WORLD_GROUPS = groups(Layer.WORLD, 0xffff);
  * Players only collide with the world and structures (not each other). That keeps the
  * client's predicted world (map only) identical to what the server sees for that player.
  */
-export const PLAYER_GROUPS = groups(Layer.PLAYER, Layer.WORLD | Layer.STRUCTURE);
+export const PLAYER_GROUPS = groups(Layer.PLAYER, Layer.WORLD | Layer.STRUCTURE | Layer.VEHICLE);
+/** Bullets: the world and structures stop them; they pass through vehicles (you can shoot the driver). */
+export const SHOT_GROUPS = groups(Layer.PLAYER, Layer.WORLD | Layer.STRUCTURE);
+/** A vehicle's own collider: an obstacle for players and other vehicles. */
+export const VEHICLE_GROUPS = groups(Layer.VEHICLE, 0xffff);
+/** What a moving vehicle collides with (players and zombies are run over, not collided with). */
+export const VEHICLE_MOVE_GROUPS = groups(Layer.VEHICLE, Layer.WORLD | Layer.STRUCTURE | Layer.VEHICLE);

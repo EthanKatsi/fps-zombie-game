@@ -1,16 +1,38 @@
 import * as THREE from 'three';
-import type { World } from '@dimforge/rapier3d-compat';
+import type { Collider, World } from '@dimforge/rapier3d-compat';
 import {
   CharacterMotor,
   NETWORK,
+  SEAT_HIP,
   TICK_DT,
+  VehicleMotor,
   cloneMoveState,
+  cloneVehicleState,
   eyeHeight,
+  lerp,
+  lerpAngle,
+  seatFeet,
+  type DriveInfo,
   type MoveInput,
   type MoveState,
   type Rapier,
+  type VehicleState,
+  type VehicleType,
 } from '@grey/shared';
 import type { Input } from './Input';
+
+/** The vehicle we sit in. Drivers predict it (motor); passengers follow the interpolated one. */
+interface Ride {
+  id: number;
+  type: VehicleType;
+  seat: number;
+  motor: VehicleMotor | null;
+  state: VehicleState;
+  prev: VehicleState;
+}
+
+/** Eye height above a seat (hip) point. */
+const SEAT_EYE = 0.68;
 
 /**
  * Client-side prediction + server reconciliation for the local player.
@@ -37,8 +59,19 @@ export class LocalPlayer {
   private lastCamPos = new THREE.Vector3();
   /** Interpolated feet position used for this frame's camera (the avatar stands here). */
   readonly renderFeet = new THREE.Vector3();
+  ride: Ride | null = null;
+  /** Rendered (interpolated) pose of the vehicle we're in, for the model and the chase camera. */
+  renderVehicle: VehicleState | null = null;
+  /** Hooks into the vehicles view (set by Game). */
+  vehicleCollider: (id: number) => Collider | undefined = () => undefined;
+  vehiclePose: (id: number) => VehicleState | undefined = () => undefined;
 
-  constructor(R: Rapier, world: World, initial: MoveState, private readonly input: Input) {
+  constructor(
+    private readonly R: Rapier,
+    private readonly world: World,
+    initial: MoveState,
+    private readonly input: Input,
+  ) {
     this.state = cloneMoveState(initial);
     this.prev = cloneMoveState(initial);
     this.motor = new CharacterMotor(R, world, this.state);
@@ -49,6 +82,9 @@ export class LocalPlayer {
 
   /** Hard reset to a server state (respawn / teleport): no smoothing, no pending inputs. */
   resetTo(state: MoveState): void {
+    this.ride?.motor?.dispose();
+    this.ride = null;
+    this.renderVehicle = null;
     this.state = cloneMoveState(state);
     this.prev = cloneMoveState(state);
     this.pending = [];
@@ -64,14 +100,74 @@ export class LocalPlayer {
     const { mx, mz, b } = this.input.sample();
     const cmd: MoveInput = { seq: ++this.seq, mx, mz, b, yaw: this.input.yaw, pitch: this.input.pitch };
     this.prev = this.state;
-    this.state = this.motor.step(this.state, cmd, TICK_DT);
+    const r = this.ride;
+    if (r) {
+      if (r.motor) {
+        r.prev = r.state;
+        r.state = r.motor.step(r.state, cmd, TICK_DT).state;
+        this.state = this.seated(this.state, r, cmd.yaw, cmd.pitch);
+      }
+    } else {
+      this.state = this.motor.step(this.state, cmd, TICK_DT);
+    }
     this.pending.push(cmd);
     if (this.pending.length > 120) this.pending.shift(); // ~4s; server is hopelessly behind
     return cmd;
   }
 
-  reconcile(ack: number, server: MoveState): void {
+  /** Our movement state while seated: feet at the seat, crouched (like the server). */
+  private seated(base: MoveState, r: Ride, yaw: number, pitch: number): MoveState {
+    return { ...base, pos: seatFeet(r.type, r.state, r.seat), vel: { x: 0, y: 0, z: 0 }, yaw, pitch, grounded: true, crouching: true, sprinting: false };
+  }
+
+  reconcile(ack: number, server: MoveState, drive: DriveInfo | null = null): void {
     while (this.pending.length && this.pending[0].seq <= ack) this.pending.shift();
+
+    // ---- getting in / out / changing seats: hard switch, no smoothing
+    const r = this.ride;
+    if (drive && (!r || r.id !== drive.id || r.seat !== drive.seat)) {
+      r?.motor?.dispose();
+      const collider = drive.seat === 0 ? this.vehicleCollider(drive.id) : undefined;
+      const motor = collider ? new VehicleMotor(this.R, this.world, drive.type, collider) : null;
+      this.ride = { id: drive.id, type: drive.type, seat: drive.seat, motor, state: cloneVehicleState(drive.state), prev: cloneVehicleState(drive.state) };
+      motor?.sync(drive.state);
+      this.state = cloneMoveState(server);
+      this.prev = cloneMoveState(server);
+      this.errorOffset.set(0, 0, 0);
+      return;
+    }
+    if (!drive && r) {
+      r.motor?.dispose();
+      this.ride = null;
+      this.renderVehicle = null;
+      this.state = cloneMoveState(server);
+      this.prev = cloneMoveState(server);
+      this.errorOffset.set(0, 0, 0);
+      this.motor.syncCollider(this.state);
+      return;
+    }
+    if (r && drive) {
+      if (r.motor) {
+        // Driver: rewind the vehicle to the server's state and replay unacknowledged inputs.
+        const before = r.state.pos;
+        let vs = cloneVehicleState(drive.state);
+        r.motor.sync(vs);
+        for (const cmd of this.pending) vs = r.motor.step(vs, cmd, TICK_DT).state;
+        const err = new THREE.Vector3(before.x - vs.pos.x, before.y - vs.pos.y, before.z - vs.pos.z);
+        this.lastCorrection = err.length();
+        if (this.lastCorrection > NETWORK.reconcileSnapDistance) {
+          this.errorOffset.set(0, 0, 0);
+          r.prev = cloneVehicleState(vs);
+        } else if (this.lastCorrection > 1e-4) {
+          this.errorOffset.add(err);
+        }
+        r.state = vs;
+        this.state = this.seated(server, r, this.input.yaw, this.input.pitch);
+      } else {
+        this.state = cloneMoveState(server); // passengers just ride along
+      }
+      return;
+    }
 
     const before = this.state.pos;
     let s = cloneMoveState(server);
@@ -94,6 +190,30 @@ export class LocalPlayer {
   /** Place the camera, interpolating between the last two predicted ticks; adds head-bob. */
   updateCamera(camera: THREE.PerspectiveCamera, alpha: number, dt: number): void {
     this.errorOffset.multiplyScalar(Math.exp(-dt * 15));
+    const r = this.ride;
+    if (r) {
+      // In a vehicle: drivers interpolate their prediction, passengers use the rendered vehicle.
+      let v: VehicleState | undefined;
+      if (r.motor) {
+        const a = r.prev, b = r.state;
+        v = {
+          ...b,
+          pos: { x: lerp(a.pos.x, b.pos.x, alpha) + this.errorOffset.x, y: lerp(a.pos.y, b.pos.y, alpha) + this.errorOffset.y, z: lerp(a.pos.z, b.pos.z, alpha) + this.errorOffset.z },
+          yaw: lerpAngle(a.yaw, b.yaw, alpha),
+        };
+      } else {
+        v = this.vehiclePose(r.id);
+      }
+      if (v) {
+        this.renderVehicle = v;
+        const f = seatFeet(r.type, v, r.seat);
+        this.renderFeet.set(f.x, f.y, f.z);
+      }
+      this.lastCamPos.copy(this.renderFeet);
+      camera.position.set(this.renderFeet.x, this.renderFeet.y + SEAT_HIP + SEAT_EYE, this.renderFeet.z);
+      camera.rotation.set(this.input.pitch, this.input.yaw, 0, 'YXZ');
+      return;
+    }
     const targetEye = eyeHeight(this.state.crouching);
     this.eye += (targetEye - this.eye) * (1 - Math.exp(-dt * 14));
     const a = this.prev.pos, b = this.state.pos;

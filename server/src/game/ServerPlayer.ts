@@ -49,6 +49,8 @@ export class ServerPlayer {
   readonly history = new PositionHistory(PVP.historyMs);
   /** Immune to other players until then (performance.now ms); attacking ends it early. */
   protectedUntil = performance.now() + PVP.spawnProtectionSec * 1000;
+  /** Set while sitting in a vehicle: movement inputs go to the vehicle system instead of the motor. */
+  seatInput: ((p: ServerPlayer, input: MoveInput, dt: number) => void) | null = null;
   /** Attacks waiting for the inputs that preceded them to be simulated. */
   pendingAttacks: { req: AttackRequest; arrivedAt: number }[] = [];
   combat: {
@@ -110,9 +112,10 @@ export class ServerPlayer {
       const input = this.inputQueue.shift()!;
       if (input.seq <= this.lastSeq) continue;
       const before = this.state;
-      this.state = this.motor.step(this.state, input, dt);
+      if (this.seatInput) this.seatInput(this, input, dt);
+      else this.state = this.motor.step(this.state, input, dt);
       this.aiming = (input.b & Buttons.aim) !== 0;
-      if (!before.grounded && this.state.grounded && before.vel.y < 0) onLand?.(-before.vel.y);
+      if (!this.seatInput && !before.grounded && this.state.grounded && before.vel.y < 0) onLand?.(-before.vel.y);
       this.lastSeq = input.seq;
       this.credit -= 1;
       onApplied?.();

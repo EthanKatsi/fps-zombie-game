@@ -1,4 +1,5 @@
 import type { Vec3 } from '../types/common';
+import type { VehicleType } from '../config/vehicles';
 import type { ContainerKind } from '../types/inventory';
 import type { Rapier } from '../sim/movement';
 import type { World } from '@dimforge/rapier3d-compat';
@@ -92,6 +93,14 @@ export interface NavLink {
   b: [number, number, number];
 }
 
+/** Where a drivable vehicle is parked at server start (and respawns when wrecked). */
+export interface VehicleSpawn {
+  type: VehicleType;
+  /** Ground position under the vehicle's centre. */
+  p: [number, number, number];
+  yaw: number;
+}
+
 export interface MapData {
   id: string;
   seed: number;
@@ -105,6 +114,7 @@ export interface MapData {
   /** Extra navmesh connections for zombie pathfinding (one per stair flight). */
   navLinks: NavLink[];
   spawnPoints: Vec3[];
+  vehicleSpawns: VehicleSpawn[];
 }
 
 /** Create fixed colliders for every map box. Call world.step() once afterwards. */

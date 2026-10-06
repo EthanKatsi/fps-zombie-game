@@ -362,6 +362,33 @@ Everything is generated in code (no downloaded assets):
   - To redo a conversion: run `FBX2glTF.exe --binary --input x.fbx --output x` from the npm package
     `fbx2gltf@0.9.7`, then apply the same material fixes.
 
+## Extra: big world and drivable vehicles (requested after M7)
+
+- **New default map `world`** (`generateWorld.ts`, `WORLD` config), 1.28 km across:
+  - the walled downtown (north-east) with west and south gates and army checkpoints outside them;
+  - the suburbs (south-east);
+  - a big forest in the west with 10 cabins and a campground;
+  - a gas station, highways and dirt roads, and a perimeter fence.
+- **Size.** About 60k pieces (33k colliders). It generates in about 90 ms. The navmesh takes about 33 s to build
+  once, then loads from `server/data/navmesh-world-*.bin`.
+- **Old maps.** The city generator became `generateGrid`, used for both downtown and the suburbs. The old `city`
+  map and `testmap` remain for tests.
+- **Client rendering.** New pine (cone) and rock (blob) shapes. New materials: forest floor, dirt, burnt car,
+  tent and army green. Whole chunks beyond the far plane are hidden.
+- **Vehicles:** sedan (4 seats), pickup (2) and motorcycle (2). 39 of them are parked around the world; every
+  type is guaranteed to appear in the suburbs. See ARCHITECTURE.md "Vehicles".
+  - E gets in; the driver's seat is taken first. W/S drive, A/D steer, Space handbrake, E gets out (below
+    4 m/s, beside your door).
+  - The chase camera drifts back behind the car when you leave the mouse alone; V switches to the seat view.
+  - The speed / health HUD sits bottom right.
+  - Drivers can't shoot; passengers can.
+  - Running over zombies or players at speed hurts them. Crashes damage the vehicle and occupants. Wrecks
+    burn out, eject everyone and respawn after 5 minutes. Engine noise draws zombies.
+  - Vehicles are not saved. They reset to their spawns when the server restarts.
+- Tests: `server/test/vehicles.test.ts` (enter/drive/exit rules, passengers, running over, world contents).
+- **Note.** Players' saved positions from the old city map are kept if they're valid ground in the new world
+  (they'll appear somewhere around the map). Invalid ones respawn on a road.
+
 ## Extra: assault rifle (requested after M7)
 
 - An `assault_rifle` item plus weapon. It's the first **full-auto** weapon (`WeaponDef.automatic`: hold to fire):

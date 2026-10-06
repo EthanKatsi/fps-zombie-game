@@ -13,6 +13,7 @@ const SURFACE_OF: Record<string, Layer> = {
   car_red: 'metal', car_blue: 'metal', car_white: 'metal', car_rust: 'metal', car_green: 'metal', car_black: 'metal',
   floor_wood: 'wood', wood: 'wood', wood_dark: 'wood', crate: 'wood', fence_wood: 'wood', door: 'wood',
   floor_tile: 'tile', fabric: 'fabric', sandbag: 'fabric', roof: 'roof', bark: 'bark', leaves: 'leaves', bush: 'leaves',
+  forest_floor: 'leaves', dirt: 'roof', pine: 'leaves', rock: 'concrete', car_burnt: 'metal', tent: 'fabric', military: 'metal',
 };
 
 /** Per-material base roughness / metalness (everything else is matte). */
@@ -23,6 +24,7 @@ const SURFACE_PROPS: Partial<Record<string, { roughness: number; metalness: numb
   metal: { roughness: 0.5, metalness: 0.6 }, metal_dark: { roughness: 0.55, metalness: 0.6 },
   fence_metal: { roughness: 0.6, metalness: 0.5 }, appliance: { roughness: 0.35, metalness: 0.2 },
   floor_tile: { roughness: 0.35, metalness: 0 }, car_glass: { roughness: 0.1, metalness: 0.6 },
+  car_burnt: { roughness: 0.95, metalness: 0.3 }, military: { roughness: 0.75, metalness: 0.3 },
 };
 
 export const surfaceIndex = (materialKey: string): number => LAYERS.indexOf(SURFACE_OF[materialKey] ?? 'plain');

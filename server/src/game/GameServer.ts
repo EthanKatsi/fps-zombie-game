@@ -32,6 +32,7 @@ import { WeaponSystem } from './WeaponSystem';
 import { DummySystem } from './DummySystem';
 import { NoiseSystem } from './NoiseSystem';
 import { ZombieSystem } from './ZombieSystem';
+import { VehicleSystem } from './VehicleSystem';
 import { Navigation, buildNavMesh } from './Navigation';
 import { WorldClock } from './WorldClock';
 import type { GameIO, GameSocket } from './types';
@@ -50,6 +51,7 @@ export class GameServer {
   readonly survival: SurvivalSystem;
   readonly weapons: WeaponSystem;
   readonly dummies: DummySystem;
+  readonly vehicles: VehicleSystem;
   readonly noise = new NoiseSystem();
   readonly clock = new WorldClock();
   /** Created by enableZombies() once the navmesh is ready. */
@@ -82,6 +84,8 @@ export class GameServer {
     this.items = new InventorySystem(R, this.world, this.map, () => this.players.values());
     this.survival = new SurvivalSystem(this.items, () => this.spawnPoint(), (e) => this.io.emit('killFeed', e));
     this.dummies = new DummySystem(this.map.dummies, io);
+    this.vehicles = new VehicleSystem(R, this.world, this.map, () => this.players.values(), this.survival, this.noise, () => this.zombies);
+    this.world.step(); // vehicle colliders
     this.weapons = new WeaponSystem(
       R, this.world, () => this.players.values(), this.survival, this.items, this.dummies, this.noise,
       () => this.zombies, () => this.serverTime(),
@@ -179,7 +183,8 @@ export class GameServer {
       if (player) this.survival.respawn(player);
     });
     socket.on('attack', (req) => {
-      if (player) this.weapons.attack(player, req);
+      if (!player || this.vehicles.seatOf(player)?.seat === 0) return; // hands on the wheel
+      this.weapons.attack(player, req);
     });
     socket.on('reload', () => {
       if (player) this.weapons.reload(player);
@@ -188,6 +193,7 @@ export class GameServer {
     socket.on('disconnect', () => {
       if (!player) return;
       const p = player;
+      this.vehicles.onPlayerGone(p);
       this.players.delete(p.id);
       this.items.onLeave(p);
       p.dispose();
@@ -281,6 +287,11 @@ export class GameServer {
     if (req?.kind === 'door' && Number.isInteger(req.id)) this.toggleDoor(p, req.id, now);
     else if (req?.kind === 'container') this.items.openMapContainer(p, req.id);
     else if (req?.kind === 'pickup') this.items.pickup(p, req.id);
+    else if (req?.kind === 'exitVehicle') this.vehicles.exit(p);
+    else if (req?.kind === 'vehicle' && Number.isInteger(req.id)) {
+      if (this.vehicles.seatOf(p)) this.vehicles.exit(p);
+      else this.vehicles.enter(p, req.id);
+    }
   }
 
   private toggleDoor(p: ServerPlayer, id: number, now: number): void {
@@ -344,12 +355,19 @@ export class GameServer {
         () => this.weapons.flushPending(p),
       );
       this.weapons.flushPending(p); // drop attacks that waited too long
+      if (!p.alive && p.seatInput) this.vehicles.onPlayerGone(p);
       if (p.alive) p.history.push(st, p.state.pos, p.state.crouching);
       if (p.alive && p.state.pos.y < -30) {
         // Fell out of the world.
+        this.vehicles.onPlayerGone(p);
         const spawn = this.randomSpawn();
         p.teleport(spawn, yawTowardCenter(spawn));
       }
+    }
+    this.vehicles.update(performance.now(), TICK_DT);
+    if (this.vehicles.moved) {
+      this.world.step(); // moved vehicle colliders must be visible to the next tick's queries
+      this.vehicles.moved = false;
     }
 
     const now = performance.now();
@@ -384,9 +402,14 @@ export class GameServer {
           (s.grounded ? PlayerFlags.grounded : 0) |
           (s.sprinting ? PlayerFlags.sprinting : 0) |
           (p.inventory.equipment?.head ? PlayerFlags.helmet : 0) |
-          (p.inventory.equipment?.body ? PlayerFlags.vest : 0),
+          (p.inventory.equipment?.body ? PlayerFlags.vest : 0) |
+          (p.seatInput ? PlayerFlags.seated : 0),
         h: p.inventory.slots[p.inventory.activeHotbar]?.defId ?? '',
         hc: p.hitCount,
+        ...(() => {
+          const seat = p.seatInput ? this.vehicles.seatOf(p) : null;
+          return seat ? { v: seat.v.id * 8 + seat.seat } : {};
+        })(),
       });
     }
 
@@ -404,8 +427,10 @@ export class GameServer {
         serverTime: time,
         ack: me.lastSeq,
         you: me.state,
+        drive: this.vehicles.driveFor(me),
         players: visible,
         zombies: this.zombies?.netFor(me.state.pos) ?? [],
+        vehicles: this.vehicles.netFor(me.state.pos),
       });
     }
   }

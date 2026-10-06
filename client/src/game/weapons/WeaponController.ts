@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { World } from '@dimforge/rapier3d-compat';
 import {
   NETWORK,
-  PLAYER_GROUPS,
+  SHOT_GROUPS,
   countItem,
   getItemDef,
   pelletDirections,
@@ -185,7 +185,7 @@ export class WeaponController {
       const o = this.eye;
       for (const d of dirs) {
         const ray = new R.Ray({ x: o.x, y: o.y, z: o.z }, d);
-        const hit = world.castRay(ray, w.range, true, undefined, PLAYER_GROUPS, local.motor.collider);
+        const hit = world.castRay(ray, w.range, true, undefined, SHOT_GROUPS, local.motor.collider);
         const t = hit ? hit.timeOfImpact : w.range;
         const end = this.tmp.set(o.x + d.x * t, o.y + d.y * t, o.z + d.z * t).clone();
         effects.tracer(muzzle, end);

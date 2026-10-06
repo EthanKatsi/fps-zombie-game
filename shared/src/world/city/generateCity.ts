@@ -4,40 +4,124 @@ import type { Vec3 } from '../../types/common';
 import type { BuildingType, MapBox, MapData } from '../mapData';
 import { BUILDING_SPECS, buildBuilding, pick, randRange, rollBuildingSize, type GenContext } from './buildings';
 
-type BlockKind = 'residential' | 'commercial' | 'park' | 'parking' | 'police';
+export type BlockKind = 'residential' | 'commercial' | 'park' | 'parking' | 'police';
+export type Side = 'n' | 's' | 'e' | 'w';
 
 const CAR_COLORS = ['car_red', 'car_blue', 'car_white', 'car_rust', 'car_green', 'car_black'];
 
+/** A street centre line of a grid (axis = direction the street runs). */
+export interface GridStreet {
+  axis: 'x' | 'z';
+  /** Fixed coordinate of the centre line (z for axis 'x', x for axis 'z'). */
+  c: number;
+  from: number;
+  to: number;
+  width: number;
+}
+
+export interface GridOptions {
+  id: string;
+  blocksPerSide: number;
+  blockSize: number;
+  streetWidth: number;
+  sidewalkWidth: number;
+  blockWeights: Partial<Record<Exclude<BlockKind, 'police'>, number>>;
+  requiredBuildings: [BuildingType, number][];
+  /** Reserve one block for the police station + shooting range. */
+  police: boolean;
+  /** Perimeter wall (quarantine); gates open the middle street on the listed sides. */
+  wall: { height: number; gates: Side[] } | null;
+  /** Ground slab material and how far it extends past the outer streets. */
+  ground: string;
+  groundMargin: number;
+  carsPer100m: number;
+  debrisPer100m: number;
+  /** Concrete roadblocks at random intersections. */
+  roadblocks: boolean;
+  /** Spawn points around the outer ring road. */
+  ringSpawns: number;
+  /** 0..1: burnt-out cars, overturned cars, trash piles (abandoned city). */
+  wreckage: number;
+}
+
+export interface GridResult {
+  map: MapData;
+  half: number;
+  streets: GridStreet[];
+  /** Positions already taken by parked/wrecked cars (and spawn points). */
+  carSpots: [number, number][];
+}
+
+/** Calder Point's old downtown: the original walled city (used by tests and as a standalone map). */
+export const CITY_GRID: GridOptions = {
+  id: 'city',
+  blocksPerSide: CITY.blocksPerSide,
+  blockSize: CITY.blockSize,
+  streetWidth: CITY.streetWidth,
+  sidewalkWidth: CITY.sidewalkWidth,
+  blockWeights: CITY.blockWeights,
+  requiredBuildings: CITY.requiredBuildings,
+  police: true,
+  wall: { height: CITY.perimeterWallHeight, gates: [] },
+  ground: 'asphalt',
+  groundMargin: 20,
+  carsPer100m: CITY.carsPer100m,
+  debrisPer100m: CITY.debrisPer100m,
+  roadblocks: true,
+  ringSpawns: CITY.edgeSpawnPoints,
+  wreckage: 0,
+};
+
+/** The standalone walled city map (map id 'city'). */
+export const generateCity = (seed: number): MapData => generateGrid(mulberry32(seed), seed, CITY_GRID).map;
+
 /**
- * Calder Point: a square grid of blocks inside a quarantine wall, with a ring road.
- * Each block is split into 2x2 lots. Deterministic for a given seed.
+ * A square grid of blocks with streets between them, centred on the origin. Each block is
+ * split into 2x2 lots. Used for the downtown (walled, commercial) and the suburbs.
  */
-export const generateCity = (seed: number): MapData => {
-  const rand = mulberry32(seed);
+export const generateGrid = (rand: () => number, seed: number, o: GridOptions): GridResult => {
   const ctx: GenContext = { boxes: [], doors: [], containers: [], buildings: [], dummies: [], navLinks: [], rand };
   const { boxes } = ctx;
-  const N = CITY.blocksPerSide;
-  const B = CITY.blockSize;
-  const S = CITY.streetWidth;
-  const SWK = CITY.sidewalkWidth;
+  const N = o.blocksPerSide;
+  const B = o.blockSize;
+  const S = o.streetWidth;
+  const SWK = o.sidewalkWidth;
   const CURB = CITY.curbHeight;
   const total = N * B + (N + 1) * S;
   const half = total / 2;
   const blockMin = (i: number) => -half + S + i * (B + S);
+  const streetC = (k: number) => -half + S / 2 + k * (B + S);
+  const mid = streetC(Math.floor(N / 2));
 
-  // ---- ground + quarantine wall
-  boxes.push({ p: [0, -0.5, 0], s: [total + 40, 1, total + 40], m: 'asphalt' });
-  const WH = CITY.perimeterWallHeight;
-  boxes.push({ p: [0, WH / 2, -half - 0.5], s: [total + 2, WH, 1], m: 'concrete_wall' });
-  boxes.push({ p: [0, WH / 2, half + 0.5], s: [total + 2, WH, 1], m: 'concrete_wall' });
-  boxes.push({ p: [-half - 0.5, WH / 2, 0], s: [1, WH, total], m: 'concrete_wall' });
-  boxes.push({ p: [half + 0.5, WH / 2, 0], s: [1, WH, total], m: 'concrete_wall' });
+  // ---- ground + perimeter wall (with gates on the middle street)
+  boxes.push({ p: [0, -0.5, 0], s: [total + o.groundMargin * 2, 1, total + o.groundMargin * 2], m: o.ground });
+  if (o.wall) {
+    const WH = o.wall.height;
+    const gate = S + 2;
+    const wallSide = (side: Side) => {
+      const along = side === 'n' || side === 's' ? 'x' : 'z';
+      const fixed = side === 'n' ? -half - 0.5 : side === 's' ? half + 0.5 : side === 'w' ? -half - 0.5 : half + 0.5;
+      const len = total + 2;
+      const segs: [number, number][] = o.wall!.gates.includes(side)
+        ? [[-len / 2, mid - gate / 2], [mid + gate / 2, len / 2]]
+        : [[-len / 2, len / 2]];
+      for (const [a, b] of segs) {
+        const c = (a + b) / 2;
+        boxes.push({
+          p: along === 'x' ? [c, WH / 2, fixed] : [fixed, WH / 2, c],
+          s: along === 'x' ? [b - a, WH, 1] : [1, WH, b - a],
+          m: 'concrete_wall',
+        });
+      }
+    };
+    (['n', 's', 'w', 'e'] as Side[]).forEach(wallSide);
+  }
 
   // ---- spawn points around the ring road (kept clear of cars)
   const spawnPoints: Vec3[] = [];
   const ring = half - S / 2;
-  for (let i = 0; i < CITY.edgeSpawnPoints; i++) {
-    const t = (i / CITY.edgeSpawnPoints) * 8 - 4; // walk the square perimeter
+  for (let i = 0; i < o.ringSpawns; i++) {
+    const t = (i / o.ringSpawns) * 8 - 4; // walk the square perimeter
     const side = Math.floor((t + 4) / 2);
     const u = ((t + 4) % 2) - 1; // -1..1 along the side
     const along = u * (ring - 6);
@@ -53,15 +137,16 @@ export const generateCity = (seed: number): MapData => {
     [cells[k], cells[r]] = [cells[r], cells[k]];
   }
   const required: BuildingType[] = [];
-  for (const [t, n] of CITY.requiredBuildings) for (let k = 0; k < n; k++) required.push(t);
+  for (const [t, n] of o.requiredBuildings) for (let k = 0; k < n; k++) required.push(t);
   const commercialNeeded = Math.ceil(required.length / 4);
-  const weights = Object.entries(CITY.blockWeights) as [BlockKind, number][];
+  const weights = Object.entries(o.blockWeights) as [BlockKind, number][];
   const weightSum = weights.reduce((a, [, w]) => a + w, 0);
   const kinds = new Map<string, BlockKind>();
   cells.forEach(([i, j], idx) => {
     let kind: BlockKind;
-    if (idx === 0) kind = 'police';
-    else if (idx <= commercialNeeded) kind = 'commercial';
+    const k0 = o.police ? 1 : 0;
+    if (o.police && idx === 0) kind = 'police';
+    else if (idx < k0 + commercialNeeded) kind = 'commercial';
     else {
       let r = rand() * weightSum;
       kind = weights.find(([, w]) => (r -= w) < 0)?.[0] ?? 'residential';
@@ -101,10 +186,12 @@ export const generateCity = (seed: number): MapData => {
   }
 
   // ---- streets: lane markings, abandoned cars, debris
+  const streets: GridStreet[] = [];
   const carSpots: [number, number][] = spawnPoints.map((p) => [p.x, p.z]);
   for (let k = 0; k <= N; k++) {
-    const c = -half + S / 2 + k * (B + S);
+    const c = streetC(k);
     for (const axis of ['x', 'z'] as const) {
+      streets.push({ axis, c, from: -half, to: half, width: S });
       // Dashed centre line between intersections.
       for (let i = 0; i < N; i++) {
         const a0 = blockMin(i);
@@ -113,55 +200,83 @@ export const generateCity = (seed: number): MapData => {
           boxes.push({ p, s: axis === 'x' ? [2.5, 0.01, 0.15] : [0.15, 0.01, 2.5], m: 'paint', col: false, d: true });
         }
       }
-      const cars = Math.round((total / 100) * CITY.carsPer100m);
+      const cars = Math.round((total / 100) * o.carsPer100m);
       for (let n = 0; n < cars; n++) {
         const along = randRange(rand, -half + 6, half - 6);
-        const lane = (rand() < 0.5 ? -1 : 1) * randRange(rand, 1.5, 4.5);
+        const lane = (rand() < 0.5 ? -1 : 1) * randRange(rand, 1.5, S / 2 - 2.5);
         const [x, z] = axis === 'x' ? [along, c + lane] : [c + lane, along];
         if (carSpots.some(([px, pz]) => Math.hypot(px - x, pz - z) < 6)) continue;
+        // Keep the gates passable.
+        if (o.wall && Math.abs(axis === 'x' ? z - mid : x - mid) < S && Math.abs(along) > half - 25) continue;
         carSpots.push([x, z]);
         let yaw = (axis === 'x' ? Math.PI / 2 : 0) + randRange(rand, -0.35, 0.35) + (rand() < 0.5 ? Math.PI : 0);
         if (rand() < 0.12) yaw += Math.PI / 2; // crashed sideways
-        addCar(ctx, x, 0, z, yaw);
+        addCar(ctx, x, 0, z, yaw, o.wreckage);
       }
-      const debris = Math.round((total / 100) * CITY.debrisPer100m);
+      const debris = Math.round((total / 100) * o.debrisPer100m);
       for (let n = 0; n < debris; n++) {
         const along = randRange(rand, -half + 3, half - 3);
         const off = randRange(rand, -S / 2 + 0.5, S / 2 - 0.5);
         const [x, z] = axis === 'x' ? [along, c + off] : [c + off, along];
+        if (spawnPoints.some((sp) => Math.hypot(sp.x - x, sp.z - z) < 2.5)) continue; // never on a spawn point
         addDebris(boxes, rand, x, 0, z);
       }
     }
   }
 
+  // ---- abandoned-city dressing: trash piles against the curbs
+  if (o.wreckage > 0) {
+    const piles = Math.round(N * N * 3 * o.wreckage);
+    for (let n = 0; n < piles; n++) {
+      const k = Math.floor(rand() * (N + 1));
+      const axis = rand() < 0.5 ? 'x' : 'z';
+      const along = randRange(rand, -half + 8, half - 8);
+      const off = (rand() < 0.5 ? -1 : 1) * (S / 2 - 0.8);
+      const [x, z] = axis === 'x' ? [along, streetC(k) + off] : [streetC(k) + off, along];
+      for (let b = 0; b < 4; b++) {
+        const s = randRange(rand, 0.5, 0.9);
+        boxes.push({ p: [x + randRange(rand, -1, 1), s / 2, z + randRange(rand, -1, 1)], s: [s * 1.2, s, s], r: [0, rand() * Math.PI, 0], m: 'trash', col: false, d: true });
+      }
+    }
+  }
+
   // ---- a few concrete roadblocks at intersections
-  for (let n = 0; n < N; n++) {
-    const kx = Math.floor(rand() * (N + 1));
-    const kz = Math.floor(rand() * (N + 1));
-    const cx = -half + S / 2 + kx * (B + S);
-    const cz = -half + S / 2 + kz * (B + S);
-    if (Math.abs(cx) > ring - 8 || Math.abs(cz) > ring - 8) continue; // keep the ring road open
-    for (let b = 0; b < 3; b++) {
-      boxes.push({
-        p: [cx + randRange(rand, -4, 4), 0.45, cz + randRange(rand, -4, 4)],
-        s: [3, 0.9, 0.6],
-        r: [0, rand() * Math.PI, 0],
-        m: 'concrete_barrier',
-      });
+  if (o.roadblocks) {
+    for (let n = 0; n < N; n++) {
+      const kx = Math.floor(rand() * (N + 1));
+      const kz = Math.floor(rand() * (N + 1));
+      const cx = streetC(kx);
+      const cz = streetC(kz);
+      if (Math.abs(cx) > ring - 8 || Math.abs(cz) > ring - 8) continue; // keep the ring road open
+      if (o.wall?.gates.length && (Math.abs(cx - mid) < 1 || Math.abs(cz - mid) < 1)) continue; // and the gate roads
+      for (let b = 0; b < 3; b++) {
+        boxes.push({
+          p: [cx + randRange(rand, -4, 4), 0.45, cz + randRange(rand, -4, 4)],
+          s: [3, 0.9, 0.6],
+          r: [0, rand() * Math.PI, 0],
+          m: 'concrete_barrier',
+        });
+      }
     }
   }
 
   return {
-    id: 'city',
-    seed,
-    halfSize: half,
-    boxes,
-    doors: ctx.doors,
-    buildings: ctx.buildings,
-    containers: ctx.containers,
-    dummies: ctx.dummies,
-    navLinks: ctx.navLinks,
-    spawnPoints,
+    half,
+    streets,
+    carSpots,
+    map: {
+      id: o.id,
+      seed,
+      halfSize: half,
+      boxes,
+      doors: ctx.doors,
+      buildings: ctx.buildings,
+      containers: ctx.containers,
+      dummies: ctx.dummies,
+      navLinks: ctx.navLinks,
+      spawnPoints,
+      vehicleSpawns: [],
+    },
   };
 };
 
@@ -248,11 +363,7 @@ const parkLot = (ctx: GenContext, lot: Lot, curb: number) => {
   for (let n = 0; n < trees; n++) {
     const x = randRange(rand, lot.x0 + 2, lot.x1 - 2);
     const z = randRange(rand, lot.z0 + 2, lot.z1 - 2);
-    const th = randRange(rand, 2.5, 4);
-    boxes.push({ p: [x, curb + th / 2, z], s: [0.4, th, 0.4], m: 'bark' });
-    const cs = randRange(rand, 2.4, 3.6);
-    boxes.push({ p: [x, curb + th + cs * 0.35, z], s: [cs, cs * 0.8, cs], r: [0, rand() * Math.PI, 0], m: 'leaves', col: false });
-    boxes.push({ p: [x, curb + th + cs * 0.85, z], s: [cs * 0.6, cs * 0.5, cs * 0.6], r: [0, rand() * Math.PI, 0], m: 'leaves', col: false });
+    addLeafyTree(boxes, rand, x, curb, z);
   }
   if (rand() < 0.7) {
     const x = randRange(rand, lot.x0 + 3, lot.x1 - 3);
@@ -265,6 +376,15 @@ const parkLot = (ctx: GenContext, lot: Lot, curb: number) => {
     const s = randRange(rand, 0.8, 1.6);
     boxes.push({ p: [x, curb + s * 0.3, z], s: [s, s * 0.6, s], r: [0, rand() * Math.PI, 0], m: 'bush', col: false, d: true });
   }
+};
+
+/** Broadleaf tree: trunk (collides) + two foliage blobs. */
+export const addLeafyTree = (boxes: MapBox[], rand: () => number, x: number, y: number, z: number, scale = 1) => {
+  const th = randRange(rand, 2.5, 4) * scale;
+  boxes.push({ p: [x, y + th / 2, z], s: [0.4 * scale, th, 0.4 * scale], m: 'bark' });
+  const cs = randRange(rand, 2.4, 3.6) * scale;
+  boxes.push({ p: [x, y + th + cs * 0.35, z], s: [cs, cs * 0.8, cs], r: [0, rand() * Math.PI, 0], m: 'leaves', col: false });
+  boxes.push({ p: [x, y + th + cs * 0.85, z], s: [cs * 0.6, cs * 0.5, cs * 0.6], r: [0, rand() * Math.PI, 0], m: 'leaves', col: false });
 };
 
 const parkFence = (boxes: MapBox[], x0: number, z0: number, B: number, sw: number, curb: number) => {
@@ -319,15 +439,26 @@ const parkingLot = (ctx: GenContext, lot: Lot, curb: number) => {
   }
 };
 
-/** Car: body + cabin. yaw 0 means the car's length runs along Z. */
-const addCar = (ctx: GenContext, x: number, y: number, z: number, yaw: number) => {
+/**
+ * Wrecked car: body + cabin. yaw 0 means the car's length runs along Z. With `wreckage`,
+ * some are burnt out (black, no glass) or lying on their side.
+ */
+export const addCar = (ctx: GenContext, x: number, y: number, z: number, yaw: number, wreckage = 0) => {
   const { boxes, rand } = ctx;
-  const m = pick(rand, CAR_COLORS);
+  const burnt = rand() < wreckage * 0.35;
+  const flipped = !burnt && rand() < wreckage * 0.12;
+  const m = burnt ? 'car_burnt' : pick(rand, CAR_COLORS);
+  const fx = Math.sin(yaw), fz = Math.cos(yaw);
+  if (flipped) {
+    // On its side: the body's width becomes its height.
+    boxes.push({ p: [x, y + 0.95, z], s: [1.9, 0.8, 4.4], r: [0, yaw, Math.PI / 2], m });
+    boxes.push({ p: [x - Math.cos(yaw) * 0.7, y + 0.95, z + Math.sin(yaw) * 0.7], s: [1.7, 0.56, 2.3], r: [0, yaw, Math.PI / 2], m: 'car_glass' });
+    return;
+  }
   boxes.push({ p: [x, y + 0.7, z], s: [1.9, 0.8, 4.4], r: [0, yaw, 0], m });
   // Cabin sits slightly towards the rear.
-  const fx = Math.sin(yaw), fz = Math.cos(yaw);
-  boxes.push({ p: [x + fx * 0.2, y + 1.38, z + fz * 0.2], s: [1.7, 0.56, 2.3], r: [0, yaw, 0], m: 'car_glass' });
-  if (rand() < CITY.carTrunkChance) {
+  boxes.push({ p: [x + fx * 0.2, y + 1.38, z + fz * 0.2], s: [1.7, 0.56, 2.3], r: [0, yaw, 0], m: burnt ? 'car_burnt' : 'car_glass' });
+  if (!burnt && rand() < CITY.carTrunkChance) {
     ctx.containers.push({
       id: ctx.containers.length,
       kind: 'car_trunk',
@@ -338,7 +469,7 @@ const addCar = (ctx: GenContext, x: number, y: number, z: number, yaw: number) =
   }
 };
 
-const addDebris = (boxes: MapBox[], rand: () => number, x: number, y: number, z: number) => {
+export const addDebris = (boxes: MapBox[], rand: () => number, x: number, y: number, z: number) => {
   const kind = rand();
   if (kind < 0.5) {
     const s = randRange(rand, 0.25, 0.6);

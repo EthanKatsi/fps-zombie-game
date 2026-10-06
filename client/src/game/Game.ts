@@ -12,8 +12,11 @@ import {
   CITY,
   PLAYER_GROUPS,
   RENDER,
+  SHOT_GROUPS,
   SURVIVAL,
   TICK_DT,
+  VEHICLES,
+  lerpAngle,
   buildMapColliders,
   hashMap,
   loadMap,
@@ -37,6 +40,7 @@ import { KillFeed } from '../ui/KillFeed';
 import { Effects } from './Effects';
 import { DummiesView } from './DummiesView';
 import { ZombiesView } from './ZombiesView';
+import { VehiclesView } from './VehiclesView';
 import { Viewmodel } from './weapons/Viewmodel';
 import { WeaponController } from './weapons/WeaponController';
 import type { ModelLibrary } from './models/ModelLibrary';
@@ -104,7 +108,13 @@ export class Game {
   private readonly weapons: WeaponController;
   private readonly dummies: DummiesView;
   private readonly zombies: ZombiesView;
+  private readonly vehicles: VehiclesView;
   private readonly killFeed: KillFeed;
+  /** Camera mode to return to after leaving a vehicle (driving defaults to the chase camera). */
+  private modeBeforeRide: 'first' | 'third' | 'front' | null = null;
+  private mouseIdle = 0;
+  private camYawSet = 0;
+  private readonly vehicleHud = document.getElementById('vehicle-hud');
   private dead = false;
   private readonly tmpV = new THREE.Vector3();
   private lastLook = { yaw: 0, pitch: 0 };
@@ -187,6 +197,7 @@ export class Game {
     this.effects = new Effects(this.scene);
     this.dummies = new DummiesView(this.scene, this.map.dummies, join.dummiesDown);
     this.zombies = new ZombiesView(this.scene, models);
+    this.vehicles = new VehiclesView(R, this.world, this.scene);
     this.killFeed = new KillFeed(join.username);
     this.viewmodel.setAspect(window.innerWidth / window.innerHeight);
 
@@ -210,6 +221,8 @@ export class Game {
     // Unlocking the mouse for the inventory screen is not a pause.
     this.input.onLockChange = (locked) => this.ui.setPaused(!locked && !this.inventoryUI.isOpen && !this.dead);
     this.local = new LocalPlayer(R, this.world, join.state, this.input);
+    this.local.vehicleCollider = (id) => this.vehicles.collider(id);
+    this.local.vehiclePose = (id) => this.vehicles.pose(id);
     this.remotes = new RemotePlayers(this.scene, join.playerId, models);
     for (const p of join.players) this.remotes.setName(p.id, p.username);
     this.online = join.players.length;
@@ -238,7 +251,8 @@ export class Game {
     const s = conn.socket;
     s.on('snapshot', (snap) => {
       conn.observeServerTime(snap.serverTime + conn.rtt / 2, 0.05);
-      if (!this.dead) this.local.reconcile(snap.ack, snap.you);
+      this.vehicles.onSnapshot(snap.vehicles ?? [], snap.serverTime);
+      if (!this.dead) this.local.reconcile(snap.ack, snap.you, snap.drive ?? null);
       this.remotes.onSnapshot(snap.players, snap.serverTime);
       this.zombies.onSnapshot(snap.zombies, snap.serverTime);
     });
@@ -451,19 +465,26 @@ export class Game {
     }
     if (batch.length) this.conn.socket.emit('input', batch);
 
+    // Vehicles: remote ones interpolate (their colliders move -> refresh queries), ours is predicted.
+    const ride = this.local.ride;
+    if (this.vehicles.interpolate(this.conn.serverNow(), ride?.motor ? ride.id : null)) this.world.step();
     this.local.updateCamera(this.camera, this.accumulator / TICK_DT, dt);
-    this.applyCameraMode(dt);
+    this.vehicles.render(dt, ride?.motor && this.local.renderVehicle ? { id: ride.id, state: this.local.renderVehicle } : null);
+    this.updateRideMode();
+    if (ride) this.driveCamera(dt);
+    else this.applyCameraMode(dt);
     this.hud.update(dt);
     const inv = this.inventoryUI.inventory;
     const playing = !this.inventoryUI.isOpen && !this.dead;
     if (playing) {
       this.updateHotbarInput();
       this.updateInteraction();
-      if (inv) this.weapons.update(dt, inv, this.inventoryUI.activeHotbar, this.hud.using);
+      const driving = this.local.ride?.seat === 0;
+      if (inv && !driving) this.weapons.update(dt, inv, this.inventoryUI.activeHotbar, this.hud.using);
       if (this.cameraMode === 'front') this.combatHud.setCrosshair(0, false); // looking at yourself
     }
     this.updateAim(dt);
-    this.remotes.update(this.conn.serverNow(), dt);
+    this.remotes.update(this.conn.serverNow(), dt, this.vehicles);
     this.zombies.update(this.conn.serverNow(), dt);
     this.doorRenderer.update(dt);
     this.dummies.update(dt);
@@ -474,7 +495,7 @@ export class Game {
     // Pass 1: the world (+ post-processing). Pass 2: the first-person viewmodel on top.
     this.postfx.render(dt);
     const v = this.local.state.vel;
-    this.viewmodel.visible = !this.dead && !this.scoped && this.cameraMode === 'first';
+    this.viewmodel.visible = !this.dead && !this.scoped && this.cameraMode === 'first' && this.local.ride?.seat !== 0;
     const look = { dyaw: this.input.yaw - this.lastLook.yaw, dpitch: this.input.pitch - this.lastLook.pitch };
     this.lastLook = { yaw: this.input.yaw, pitch: this.input.pitch };
     this.viewmodel.update(
@@ -569,13 +590,96 @@ export class Game {
     }
     const c = this.camera.position;
     const ray = new this.R.Ray({ x: c.x, y: c.y, z: c.z }, a);
-    const hit = this.world.castRay(ray, 250, true, undefined, PLAYER_GROUPS, this.local.motor.collider);
+    const hit = this.world.castRay(ray, 250, true, undefined, SHOT_GROUPS, this.local.motor.collider);
     const t = hit ? hit.timeOfImpact : 250;
     dir.set(c.x + a.x * t - origin.x, c.y + a.y * t - origin.y, c.z + a.z * t - origin.z).normalize();
   }
 
+  /** Entering a vehicle switches to the chase camera; leaving restores your camera. */
+  private updateRideMode(): void {
+    const ride = this.local.ride;
+    if (ride && this.modeBeforeRide === null) {
+      this.modeBeforeRide = this.cameraMode;
+      if (ride.seat === 0) {
+        // Drivers start looking down the road from behind the vehicle.
+        this.cameraMode = 'third';
+        this.input.yaw = ride.state.yaw;
+        this.input.pitch = -0.16;
+      }
+      if (this.cameraMode === 'front') this.cameraMode = 'third';
+      this.mouseIdle = 0;
+      this.camYawSet = this.input.yaw;
+    } else if (!ride && this.modeBeforeRide !== null) {
+      this.cameraMode = this.modeBeforeRide;
+      this.modeBeforeRide = null;
+    }
+    if (this.vehicleHud) {
+      this.vehicleHud.classList.toggle('hidden', !ride || this.dead);
+      if (ride) {
+        const info = this.vehicles.info(ride.id);
+        const speed = Math.abs(this.local.renderVehicle?.speed ?? info?.net.s ?? 0) * 3.6;
+        this.vehicleHud.querySelector('.vh-speed')!.textContent = String(Math.round(speed));
+        this.vehicleHud.querySelector('.vh-name')!.textContent = `${VEHICLES[ride.type].name}${ride.seat === 0 ? '' : ' (passenger)'}`;
+        const hp = info?.net.hp ?? 1;
+        const bar = this.vehicleHud.querySelector<HTMLElement>('.vh-health > div')!;
+        bar.style.width = `${Math.round(hp * 100)}%`;
+        bar.style.background = hp > 0.5 ? '#8fbf5a' : hp > 0.2 ? '#c9a43a' : '#c0392b';
+      }
+    }
+  }
+
+  /**
+   * In a vehicle: first person from the seat, or a chase camera orbiting the vehicle with the
+   * mouse, drifting back behind it while driving if you leave the mouse alone.
+   */
+  private driveCamera(dt: number): void {
+    this.eye.copy(this.camera.position);
+    const ride = this.local.ride!;
+    const v = this.local.renderVehicle;
+    const inv = this.inventoryUI.inventory;
+    const heldId = inv?.slots[this.inventoryUI.activeHotbar]?.defId ?? '';
+    const gun = ride.seat > 0 && getItemDef(heldId)?.category === 'ranged';
+    const showBody = this.cameraMode !== 'first';
+    this.avatar.root.visible = showBody && !!v;
+    if (showBody && v) {
+      this.avatar.setHeld(gun ? heldId : '');
+      this.avatar.setArmor(!!inv?.equipment?.head, !!inv?.equipment?.body);
+      this.avatar.update(this.local.renderFeet, this.input.yaw, this.input.pitch, false, this.dead, dt, { yaw: v.yaw, gun });
+    }
+    if (this.cameraMode === 'first' || !v) return;
+
+    if (Math.abs(this.input.yaw - this.camYawSet) > 1e-6) this.mouseIdle = 0;
+    else this.mouseIdle += dt;
+    if (ride.seat === 0 && this.mouseIdle > 1.2 && Math.abs(v.speed) > 2) {
+      const k = 1 - Math.exp(-dt * 2.2);
+      this.input.yaw = lerpAngle(this.input.yaw, v.yaw, k);
+      this.input.pitch += (-0.16 - this.input.pitch) * k;
+    }
+    this.camYawSet = this.input.yaw;
+
+    const d = VEHICLES[ride.type];
+    const dist = ride.type === 'motorcycle' ? 4.6 : ride.type === 'pickup' ? 7.6 : 6.6;
+    const yaw = this.input.yaw, pitch = Math.max(-0.9, Math.min(0.5, this.input.pitch));
+    const target = this.tmpA.set(v.pos.x, v.pos.y + d.clearance + d.size[1] + 0.55, v.pos.z);
+    const f = aimDirFromAngles(yaw, pitch);
+    const dir = this.tmpB.set(-f.x, -f.y, -f.z);
+    // Pull in in front of walls (vehicles don't block the camera).
+    const ray = new this.R.Ray({ x: target.x, y: target.y, z: target.z }, { x: dir.x, y: dir.y, z: dir.z });
+    const hit = this.world.castRay(ray, dist, true, undefined, SHOT_GROUPS);
+    const t = hit ? Math.max(0.6, hit.timeOfImpact - 0.3) : dist;
+    this.camera.position.copy(target).addScaledVector(dir, t);
+    this.camera.rotation.set(pitch, yaw, 0, 'YXZ');
+  }
+
   /** Look-at raycast: what would E interact with? Ground items > doors > containers. */
   private updateInteraction(): void {
+    if (this.local.ride) {
+      // In a vehicle: E gets out.
+      this.ui.setPrompt(null);
+      this.target = null;
+      if (this.input.consumePress('KeyE')) this.conn.socket.emit('interact', { kind: 'exitVehicle' });
+      return;
+    }
     const o = this.tmpB;
     const d = this.rayDir;
     this.aimRay(o, d);
@@ -597,7 +701,15 @@ export class Game {
       }
     } else if (hit) {
       const doorId = this.doorColliders.byHandle.get(hit.collider.handle);
-      if (doorId !== undefined) {
+      const vehicleId = this.vehicles.byHandle.get(hit.collider.handle);
+      if (vehicleId !== undefined) {
+        const info = this.vehicles.info(vehicleId);
+        if (info) {
+          const name = VEHICLES[info.type].name;
+          this.target = { kind: 'vehicle', id: vehicleId };
+          prompt = info.net.w ? `Wrecked ${name}` : info.net.d ? `Ride in ${name}` : `Drive ${name}`;
+        }
+      } else if (doorId !== undefined) {
         this.target = { kind: 'door', id: doorId };
         prompt = this.doorColliders.open[doorId] ? 'Close door' : 'Open door';
       } else {
@@ -634,7 +746,7 @@ export class Game {
           `${this.fps} fps · ${info.calls} draws · ${(info.triangles / 1000).toFixed(0)}k tris · ${Math.round(this.conn.rtt)} ms ping`,
           `pos ${p.x.toFixed(1)} ${p.y.toFixed(1)} ${p.z.toFixed(1)}${this.local.state.grounded ? '' : ' (air)'} · ${this.locationLabel()}`,
           `pending ${this.local.pendingCount} · last correction ${this.local.lastCorrection.toFixed(3)} m`,
-          `players ${this.online} online, ${this.remotes.count} nearby · ${this.zombies.count} zombies · ${this.groundItems.count} items near`,
+          `players ${this.online} online, ${this.remotes.count} nearby · ${this.zombies.count} zombies · ${this.vehicles.count} vehicles · ${this.groundItems.count} items near`,
         ]
           .filter(Boolean)
           .join('\n'),

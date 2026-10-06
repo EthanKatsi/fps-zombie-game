@@ -1,7 +1,7 @@
 import type { World } from '@dimforge/rapier3d-compat';
 import {
   COMBAT,
-  PLAYER_GROUPS,
+  SHOT_GROUPS,
   PVP,
   aimDirection,
   countItem,
@@ -102,7 +102,7 @@ export class WeaponSystem {
    * moment - i.e. where the shooter saw them (lag compensation). The world is not rewound.
    */
   private castRay(o: Vec3, d: Vec3, maxT: number, ignore: ServerPlayer | null, rewindTo?: number): RayResult {
-    const hit = this.world.castRay(new this.R.Ray(o, d), maxT, true, undefined, PLAYER_GROUPS);
+    const hit = this.world.castRay(new this.R.Ray(o, d), maxT, true, undefined, SHOT_GROUPS);
     let best: RayResult = { t: hit ? hit.timeOfImpact : maxT, target: null, head: false, world: hit !== null };
     for (const p of this.players()) {
       if (p === ignore || !p.alive) continue;
