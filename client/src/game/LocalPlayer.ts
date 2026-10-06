@@ -159,7 +159,9 @@ export class LocalPlayer {
           this.errorOffset.set(0, 0, 0);
           r.prev = cloneVehicleState(vs);
         } else if (this.lastCorrection > 1e-4) {
+          // Blend the correction out visually (both interpolation ends move, like walking).
           this.errorOffset.add(err);
+          r.prev = { ...r.prev, pos: { x: r.prev.pos.x - err.x, y: r.prev.pos.y - err.y, z: r.prev.pos.z - err.z } };
         }
         r.state = vs;
         this.state = this.seated(server, r, this.input.yaw, this.input.pitch);

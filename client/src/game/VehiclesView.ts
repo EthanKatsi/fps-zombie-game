@@ -152,7 +152,7 @@ class VehicleMesh {
   constructor(R: Rapier, world: World, readonly id: number, readonly type: VehicleType, n: NetVehicle) {
     this.built = build(type, PAINTS[id % PAINTS.length]);
     this.info = n;
-    this.pose = { pos: { x: n.p[0], y: n.p[1], z: n.p[2] }, yaw: n.yaw, speed: n.s, vy: 0, grounded: true, steer: n.st };
+    this.pose = { pos: { x: n.p[0], y: n.p[1], z: n.p[2] }, yaw: n.yaw, speed: n.s, vy: 0, grounded: true, steer: n.st, fuel: 0 };
     this.collider = createVehicleCollider(R, world, type, this.pose);
   }
 

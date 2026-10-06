@@ -115,6 +115,9 @@ export class Game {
   private mouseIdle = 0;
   private camYawSet = 0;
   private readonly vehicleHud = document.getElementById('vehicle-hud');
+  /** Vehicle colliders moved / appeared: step the prediction world soon (it's expensive). */
+  private vehicleStepPending = false;
+  private lastVehicleStep = 0;
   private dead = false;
   private readonly tmpV = new THREE.Vector3();
   private lastLook = { yaw: 0, pitch: 0 };
@@ -467,7 +470,13 @@ export class Game {
 
     // Vehicles: remote ones interpolate (their colliders move -> refresh queries), ours is predicted.
     const ride = this.local.ride;
-    if (this.vehicles.interpolate(this.conn.serverNow(), ride?.motor ? ride.id : null)) this.world.step();
+    if (this.vehicles.interpolate(this.conn.serverNow(), ride?.motor ? ride.id : null)) this.vehicleStepPending = true;
+    // world.step costs several ms on the big map: refresh queries for moved vehicles a few times a second.
+    if (this.vehicleStepPending && now - this.lastVehicleStep > 300) {
+      this.world.step();
+      this.vehicleStepPending = false;
+      this.lastVehicleStep = now;
+    }
     this.local.updateCamera(this.camera, this.accumulator / TICK_DT, dt);
     this.vehicles.render(dt, ride?.motor && this.local.renderVehicle ? { id: ride.id, state: this.local.renderVehicle } : null);
     this.updateRideMode();
@@ -624,6 +633,12 @@ export class Game {
         const bar = this.vehicleHud.querySelector<HTMLElement>('.vh-health > div')!;
         bar.style.width = `${Math.round(hp * 100)}%`;
         bar.style.background = hp > 0.5 ? '#8fbf5a' : hp > 0.2 ? '#c9a43a' : '#c0392b';
+        const tank = VEHICLES[ride.type].tankLiters;
+        const liters = ride.motor ? ride.state.fuel : (info?.net.f ?? 0) * tank;
+        const fuelBar = this.vehicleHud.querySelector<HTMLElement>('.vh-fuel > div')!;
+        fuelBar.style.width = `${Math.round((liters / tank) * 100)}%`;
+        fuelBar.style.background = liters <= 0 ? '#c0392b' : liters / tank < 0.15 ? '#c9a43a' : '#d9b25a';
+        this.vehicleHud.querySelector('.vh-fuel-text')!.textContent = liters <= 0 ? 'OUT OF FUEL' : `Fuel ${liters.toFixed(1)} / ${tank} L`;
       }
     }
   }
@@ -705,16 +720,35 @@ export class Game {
       if (vehicleId !== undefined) {
         const info = this.vehicles.info(vehicleId);
         if (info) {
-          const name = VEHICLES[info.type].name;
-          this.target = { kind: 'vehicle', id: vehicleId };
-          prompt = info.net.w ? `Wrecked ${name}` : info.net.d ? `Ride in ${name}` : `Drive ${name}`;
+          const def = VEHICLES[info.type];
+          const held = this.inventoryUI.inventory?.slots[this.inventoryUI.activeHotbar];
+          const can = held && getItemDef(held.defId)?.fuelCan ? held : null;
+          if (can && !info.net.w && info.net.f < 0.995) {
+            // Holding a gas can: refuel instead of getting in.
+            this.target = { kind: 'refuel', id: vehicleId };
+            prompt = (can.fuel ?? 0) > 0
+              ? `Refuel ${def.name} (${Math.round(info.net.f * def.tankLiters)}/${def.tankLiters} L, can has ${can.fuel} L)`
+              : 'Gas can is empty';
+          } else {
+            this.target = { kind: 'vehicle', id: vehicleId };
+            const fuel = info.net.f <= 0 ? ' (no fuel)' : '';
+            prompt = info.net.w ? `Wrecked ${def.name}` : info.net.d ? `Ride in ${def.name}` : `Drive ${def.name}${fuel}`;
+          }
         }
       } else if (doorId !== undefined) {
         this.target = { kind: 'door', id: doorId };
         prompt = this.doorColliders.open[doorId] ? 'Close door' : 'Open door';
       } else {
         const t = hit.timeOfImpact;
-        const c = this.containerIndex.atPoint(o.x + d.x * t, o.y + d.y * t, o.z + d.z * t);
+        const hx = o.x + d.x * t, hy = o.y + d.y * t, hz = o.z + d.z * t;
+        const pump = this.map.fuelPumps.findIndex((p) => Math.abs(p[0] - hx) < 0.6 && Math.abs(p[1] - hy) < 1 && Math.abs(p[2] - hz) < 0.5);
+        if (pump >= 0) {
+          const held = this.inventoryUI.inventory?.slots[this.inventoryUI.activeHotbar];
+          const can = held && getItemDef(held.defId)?.fuelCan;
+          this.target = { kind: 'pump', id: pump };
+          prompt = can ? 'Fill gas can at the pump' : 'Gas pump (hold a gas can)';
+        }
+        const c = pump >= 0 ? null : this.containerIndex.atPoint(hx, hy, hz);
         if (c) {
           this.target = { kind: 'container', id: c.id };
           prompt = `Search ${CONTAINER_NAMES[c.kind]}`;

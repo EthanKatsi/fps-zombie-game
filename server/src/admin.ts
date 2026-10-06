@@ -142,6 +142,7 @@ export const createAdmin = (dataDir: string, game: GameServer, repo: PlayerRepos
       const qty = Math.max(1, Math.min(999, Math.floor(Number(body.qty) || 1)));
       const stack: ItemStack = { uid: makeUid(), defId: def.id, qty };
       if (def.maxDurability) stack.durability = def.maxDurability;
+      if (def.fuelCan) stack.fuel = def.fuelCan.liters;
       const mag = getWeaponDef(def.weaponId)?.magazineSize;
       if (mag) stack.loadedAmmo = mag;
       const inv = p ? p.inventory : normalizeInventory(rec!.inventory);

@@ -276,6 +276,7 @@ export const generateGrid = (rand: () => number, seed: number, o: GridOptions): 
       navLinks: ctx.navLinks,
       spawnPoints,
       vehicleSpawns: [],
+      fuelPumps: [],
     },
   };
 };

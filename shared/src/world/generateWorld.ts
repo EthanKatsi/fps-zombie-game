@@ -39,7 +39,7 @@ export const generateWorld = (seed: number): MapData => {
   const H = WORLD.halfSize;
   const out: MapData = {
     id: 'world', seed, halfSize: H,
-    boxes: [], doors: [], buildings: [], containers: [], dummies: [], navLinks: [], spawnPoints: [], vehicleSpawns: [],
+    boxes: [], doors: [], buildings: [], containers: [], dummies: [], navLinks: [], spawnPoints: [], vehicleSpawns: [], fuelPumps: [],
   };
   const { boxes } = out;
 
@@ -88,6 +88,7 @@ export const generateWorld = (seed: number): MapData => {
 
   // ---- gas station on the highway west of the suburbs
   const gas = gasStation(ctx, -80, 20 - RW / 2);
+  out.fuelPumps.push(...gas.pumps);
   clearings.push([gas.x, gas.z, 34]);
   taken.push([gas.x, gas.z, 26]);
 
@@ -327,14 +328,18 @@ const gasStation = (ctx: GenContext, x: number, roadEdgeZ: number) => {
   for (const [px, pz] of [[-8, 6], [8, 6], [-8, 16], [8, 16]]) boxes.push({ p: [x + px, 2.4, z + pz], s: [0.35, 4.8, 0.35], m: 'metal' });
   boxes.push({ p: [x, 4.95, z + 11], s: [22, 0.5, 14], m: 'sign_white' });
   boxes.push({ p: [x, 5.25, z + 11], s: [22.2, 0.2, 14.2], m: 'sign_red', col: false });
+  const pumps: [number, number, number][] = [];
   for (const px of [-4, 4]) {
     boxes.push({ p: [x + px, 0.12, z + 11], s: [1.2, 0.24, 7], m: 'concrete' });
-    for (const pz of [-2, 2]) boxes.push({ p: [x + px, 0.95, z + 11 + pz], s: [0.7, 1.5, 0.5], m: 'appliance' });
+    for (const pz of [-2, 2]) {
+      boxes.push({ p: [x + px, 0.95, z + 11 + pz], s: [0.7, 1.5, 0.5], m: 'appliance' });
+      pumps.push([x + px, 0.95, z + 11 + pz]);
+    }
   }
   // Shop at the back, facing the road (+Z).
   buildBuilding(ctx, 'grocery', x, z - 9, 2, 16, 12, 1, 0.2);
   if (rand() < 0.8) addCar(ctx, x + 15, 0, z + 14, Math.PI / 2 + randRange(rand, -0.2, 0.2), 0.5);
-  return { x, z };
+  return { x, z, pumps };
 };
 
 /** Abandoned army checkpoint astride a gate road: sandbag walls, a barrier chicane, tents and a truck. */

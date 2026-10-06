@@ -1,6 +1,7 @@
 import type { Collider, World } from '@dimforge/rapier3d-compat';
 import {
   MOVEMENT,
+  getItemDef,
   PLAYER_GROUPS,
   PVP,
   VEHICLES,
@@ -27,8 +28,15 @@ import type { ServerPlayer } from './ServerPlayer';
 import type { SurvivalSystem } from './SurvivalSystem';
 import type { NoiseSystem } from './NoiseSystem';
 import type { ZombieSystem } from './ZombieSystem';
+import type { InventorySystem } from './InventorySystem';
 
 const r2 = (n: number): number => Math.round(n * 100) / 100;
+
+/** Abandoned vehicles have some fuel left, rarely a full tank. */
+const spawnFuel = (d: VehicleDef): number => {
+  const [lo, hi] = VEHICLE_RULES.spawnFuel;
+  return Math.round(d.tankLiters * (lo + (hi - lo) * Math.random()) * 10) / 10;
+};
 
 export class ServerVehicle {
   readonly def: VehicleDef;
@@ -47,7 +55,7 @@ export class ServerVehicle {
 
   constructor(R: Rapier, world: World, readonly id: number, readonly type: VehicleType, readonly spawn: VehicleSpawn) {
     this.def = VEHICLES[type];
-    this.state = createVehicleState({ x: spawn.p[0], y: spawn.p[1], z: spawn.p[2] }, spawn.yaw);
+    this.state = createVehicleState({ x: spawn.p[0], y: spawn.p[1], z: spawn.p[2] }, spawn.yaw, spawnFuel(this.def));
     this.collider = createVehicleCollider(R, world, type, this.state);
     this.motor = new VehicleMotor(R, world, type, this.collider);
     this.health = this.def.health;
@@ -80,6 +88,7 @@ export class VehicleSystem {
     private readonly survival: SurvivalSystem,
     private readonly noise: NoiseSystem,
     private readonly zombies: () => ZombieSystem | null,
+    private readonly items: InventorySystem,
   ) {
     this.vehicles = map.vehicleSpawns.map((s, i) => new ServerVehicle(R, world, i, s.type, s));
   }
@@ -177,8 +186,9 @@ export class VehicleSystem {
 
   update(now: number, dt: number): void {
     for (const v of this.vehicles) {
-      // Nobody (or a lagging driver) at the wheel: roll to a stop / fall onto the ground.
-      if (!v.driven && (Math.abs(v.state.speed) > 0.02 || !v.state.grounded)) {
+      // Nobody at the wheel: roll to a stop / fall onto the ground. (A driver's vehicle only moves
+      // with their inputs, exactly like their client predicts, so a late input never double-steps.)
+      if (!v.driver && (Math.abs(v.state.speed) > 0.02 || !v.state.grounded)) {
         const res = v.motor.step(v.state, null, dt);
         v.state = res.state;
         this.moved = true;
@@ -198,12 +208,13 @@ export class VehicleSystem {
     }
   }
 
+  /** Only real crashes count: scrapes and bumps below the threshold do nothing. */
   private crash(v: ServerVehicle, impact: number): void {
-    const over = impact - VEHICLE_RULES.crashSpeedThreshold;
-    if (over <= 0) return;
-    const dmg = over * VEHICLE_RULES.crashDamagePerMps;
-    for (const p of v.seats) if (p) this.survival.damage(p, dmg * VEHICLE_RULES.crashOccupantFactor, 'unknown');
-    this.damage(v, dmg);
+    const R = VEHICLE_RULES;
+    if (impact <= R.crashSpeedThreshold) return;
+    this.damage(v, R.crashDamageBase + (impact - R.crashSpeedThreshold) * R.crashDamagePerMps);
+    const hurt = (impact - R.occupantInjurySpeed) * R.occupantDamagePerMps;
+    if (hurt > 0) for (const p of v.seats) if (p) this.survival.damage(p, hurt, 'unknown');
   }
 
   /** Damage a vehicle; at 0 it becomes a wreck and throws everyone out. */
@@ -223,7 +234,7 @@ export class VehicleSystem {
   }
 
   private respawn(v: ServerVehicle): void {
-    v.state = createVehicleState({ x: v.spawn.p[0], y: v.spawn.p[1], z: v.spawn.p[2] }, v.spawn.yaw);
+    v.state = createVehicleState({ x: v.spawn.p[0], y: v.spawn.p[1], z: v.spawn.p[2] }, v.spawn.yaw, spawnFuel(v.def));
     v.motor.sync(v.state);
     v.health = v.def.health;
     v.wrecked = false;
@@ -263,11 +274,56 @@ export class VehicleSystem {
       this.survival.damage(p, dmg, driver ? 'player' : 'unknown', driver, false, v.state.pos, { weapon: 'vehicle' });
       hits++;
     }
-    if (hits > 0) {
-      v.state = { ...v.state, speed: v.state.speed * VEHICLE_RULES.runOverSlowdown };
-      this.damage(v, hits * 4);
-    }
+    if (hits > 0) v.state = { ...v.state, speed: v.state.speed * VEHICLE_RULES.runOverSlowdown };
     if (v.hitCooldown.size > 64) for (const [k, t] of v.hitCooldown) if (t < now) v.hitCooldown.delete(k);
+  }
+
+  // ------------------------------------------------------------------ fuel
+
+  /** The gas can in the player's hand, if any. */
+  private heldCan(p: ServerPlayer) {
+    const item = p.inventory.slots[p.inventory.activeHotbar];
+    const def = item && getItemDef(item.defId);
+    return item && def?.fuelCan ? { item, capacity: def.fuelCan.liters } : null;
+  }
+
+  /** Pour the held gas can into a vehicle. */
+  refuel(p: ServerPlayer, id: number): boolean {
+    const v = this.vehicles[id];
+    const can = this.heldCan(p);
+    if (!v || !can || !p.alive || this.seatOf(p)) return false;
+    if (Math.hypot(v.state.pos.x - p.state.pos.x, v.state.pos.z - p.state.pos.z) > VEHICLE_RULES.enterRange + v.def.size[2] / 2) return false;
+    if (v.wrecked) return void p.socket.emit('notice', { text: 'It is a burnt-out wreck' }), false;
+    const have = can.item.fuel ?? 0;
+    if (have <= 0) return void p.socket.emit('notice', { text: 'The gas can is empty' }), false;
+    const room = v.def.tankLiters - v.state.fuel;
+    if (room < 0.1) return void p.socket.emit('notice', { text: 'The tank is full' }), false;
+    const poured = Math.min(have, room);
+    v.state = { ...v.state, fuel: v.state.fuel + poured };
+    can.item.fuel = Math.round((have - poured) * 10) / 10;
+    p.socket.emit('notice', { text: `Poured ${poured.toFixed(1)} L into the ${v.def.name} (${Math.round(v.state.fuel)}/${v.def.tankLiters} L)` });
+    this.items.sendInventory(p);
+    return true;
+  }
+
+  /** Fill the held gas can at a gas station pump (the station's tanks still hold fuel). */
+  pump(p: ServerPlayer, pumpId: number, pumps: [number, number, number][]): boolean {
+    const pos = pumps[pumpId];
+    const can = this.heldCan(p);
+    if (!pos || !p.alive || this.seatOf(p)) return false;
+    if (!can) return void p.socket.emit('notice', { text: 'You need a gas can' }), false;
+    if (Math.hypot(pos[0] - p.state.pos.x, pos[2] - p.state.pos.z) > 3) return false;
+    if ((can.item.fuel ?? 0) >= can.capacity) return void p.socket.emit('notice', { text: 'The gas can is already full' }), false;
+    can.item.fuel = can.capacity;
+    p.socket.emit('notice', { text: `Filled the gas can (${can.capacity} L)` });
+    this.items.sendInventory(p);
+    return true;
+  }
+
+  /** Zombies can't reach people inside cars and pickups (they can on a motorcycle). */
+  canBeBitten(p: ServerPlayer): boolean {
+    const s = p.seatInput ? this.seatOf(p) : null;
+    return !s || !s.v.def.enclosed;
   }
 
   /** Called when a player dies or leaves: they fall out of their seat. */
@@ -296,6 +352,7 @@ export class VehicleSystem {
         st: r2(v.state.steer),
         hp: r2(v.health / v.def.health),
         w: v.wrecked,
+        f: r2(v.state.fuel / v.def.tankLiters),
         d: v.driver !== null,
       });
     }

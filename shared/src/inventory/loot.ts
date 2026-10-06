@@ -15,6 +15,8 @@ export const makeItem = (defId: string, qty: number, makeUid: UidFactory, rand: 
     const [lo, hi] = LOOT.durability;
     s.durability = Math.max(1, Math.round(def.maxDurability * (lo + (hi - lo) * rand())));
   }
+  // Gas cans are often empty; the rest hold some fuel.
+  if (def.fuelCan) s.fuel = rand() < 0.35 ? 0 : Math.round(def.fuelCan.liters * (0.3 + 0.7 * rand()));
   const mag = getWeaponDef(def.weaponId)?.magazineSize;
   if (mag) {
     const [lo, hi] = LOOT.loadedFraction;

@@ -69,7 +69,7 @@ export const LOOT_TABLES: Record<string, LootTable> = {
   grocery_shelf: { rolls: [1, 3], empty: 0.3, entries: [...FOOD, { item: 'mre', w: 0.5 }] },
   grocery_fridge: { rolls: [1, 3], empty: 0.3, entries: [{ item: 'water_bottle', w: 6 }, { item: 'soda', w: 6 }] },
   grocery_cabinet: { rolls: [1, 2], empty: 0.3, entries: [{ item: 'energy_bar', w: 4 }, { item: 'chips', w: 3 }, { item: 'cloth', w: 2 }] },
-  grocery_crate: { rolls: [2, 4], empty: 0.3, entries: [...FOOD, { item: 'mre', w: 1 }] },
+  grocery_crate: { rolls: [2, 4], empty: 0.3, entries: [...FOOD, { item: 'mre', w: 1 }, { item: 'gas_can', w: 0.8 }] },
 
   pharmacy_shelf: {
     rolls: [1, 3], empty: 0.3,
@@ -88,6 +88,7 @@ export const LOOT_TABLES: Record<string, LootTable> = {
       { item: 'crowbar', w: 1.5 },
       { item: 'axe', w: 1 },
       { item: 'machete', w: 0.8 },
+      { item: 'gas_can', w: 1.5 },
     ],
   },
   hardware_crate: { rolls: [2, 4], empty: 0.3, entries: [{ item: 'wood_plank', w: 5, qty: [2, 4] }, { item: 'nails', w: 5, qty: [20, 50] }] },
@@ -157,6 +158,7 @@ export const LOOT_TABLES: Record<string, LootTable> = {
       { item: 'bat', w: 1 },
       { item: 'flashlight', w: 1.5 },
       { item: 'canned_beans', w: 2 },
+      { item: 'gas_can', w: 1.4 },
     ],
   },
 

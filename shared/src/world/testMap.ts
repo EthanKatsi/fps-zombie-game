@@ -76,13 +76,13 @@ export const generateTestMap = (seed = 1337): MapData => {
   const navLinks = [{ a: [13, 0, -10.2] as [number, number, number], b: [15.2, bh, -16.4] as [number, number, number] }];
   // Two parked vehicles in the open south-west corner (vehicle tests).
   const vehicleSpawns = [
-    { type: 'sedan' as const, p: [-30, 0, 30] as [number, number, number], yaw: 0 },
-    { type: 'motorcycle' as const, p: [-40, 0, 30] as [number, number, number], yaw: 0 },
+    { type: 'sedan' as const, p: [-28, 0, -2] as [number, number, number], yaw: Math.PI },
+    { type: 'motorcycle' as const, p: [-46, 0, -2] as [number, number, number], yaw: Math.PI },
   ];
   for (let i = boxes.length - 1; i > 0; i--) {
     const b = boxes[i];
     // Keep the vehicle test area clear of the random crates / wrecks.
     if (b.p[0] < -20 && b.p[0] > -56 && b.p[2] > -12 && b.p[2] < 56 && b.s[0] < 10) boxes.splice(i, 1);
   }
-  return { id: 'testmap', seed, halfSize: half, boxes, doors: [], buildings: [], containers: [], dummies, navLinks, spawnPoints, vehicleSpawns };
+  return { id: 'testmap', seed, halfSize: half, boxes, doors: [], buildings: [], containers: [], dummies, navLinks, spawnPoints, vehicleSpawns, fuelPumps: [[-20, 0.95, 40]] };
 };

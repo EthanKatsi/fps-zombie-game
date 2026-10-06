@@ -80,10 +80,10 @@ test('get in a car, drive it, can only get out when slow, and step out beside it
   assert.equal(snap.drive?.id, car.id);
   assert.ok(snap.vehicles.some((v) => v.id === car.id && v.d), 'vehicle has a driver');
 
-  // Full throttle for a bit: the car (facing -Z) moves forward and the driver goes with it.
+  // Full throttle for a bit: the car (facing +Z) moves forward and the driver goes with it.
   const z0 = car.state.pos.z;
   await drive(c, 2500, 1);
-  assert.ok(car.state.pos.z < z0 - 5, `drove forward: ${z0} -> ${car.state.pos.z}`);
+  assert.ok(car.state.pos.z > z0 + 5, `drove forward: ${z0} -> ${car.state.pos.z}`);
   assert.ok(car.state.speed > 4, `has speed ${car.state.speed}`);
   assert.ok(Math.hypot(p.state.pos.x - car.state.pos.x, p.state.pos.z - car.state.pos.z) < 1.5, 'driver rides along');
 
@@ -118,8 +118,8 @@ test('a passenger rides along; running over a zombie hurts it', async () => {
   assert.equal(game.vehicles.seatOf(a.p)?.seat, 0);
   assert.equal(game.vehicles.seatOf(b.p)?.seat, 1, 'passenger seat');
 
-  // A zombie standing in the road ahead (the bike faces -Z).
-  const zid = zombies.spawn('walker', { x: bike.state.pos.x, y: 0, z: bike.state.pos.z - 14 })!;
+  // A zombie standing in the road ahead (the bike faces +Z).
+  const zid = zombies.spawn('walker', { x: bike.state.pos.x, y: 0, z: bike.state.pos.z + 14 })!;
   assert.ok(zid !== null);
   const health0 = 80;
   const zhealth = () => (zombies as unknown as { zombies: Map<number, { health: number }> }).zombies.get(zid)?.health ?? 0;
@@ -139,4 +139,47 @@ test('the world map has vehicles of every type, spawn points and a navigable siz
   assert.ok(m.halfSize >= 600);
   assert.ok(m.buildings.some((b) => b.type === 'police'), 'downtown police station');
   assert.ok(m.buildings.filter((b) => b.type === 'house').length > 60, 'suburbs and cabins');
+});
+
+test('no fuel, no driving; a gas can refuels it and a pump refills the can', async () => {
+  const { c, p } = await connect('fueler');
+  const car = game.vehicles.vehicles.find((v) => v.type === 'sedan')!;
+  // Park it back at a known spot with an empty tank.
+  car.state = { ...car.state, pos: { x: -28, y: 0, z: -2 }, yaw: Math.PI, speed: 0, fuel: 0 };
+  car.motor.sync(car.state);
+  p.teleport({ x: car.state.pos.x - 2, y: 0.05, z: car.state.pos.z });
+  await drive(c, 300, 0);
+  c.emit('interact', { kind: 'vehicle', id: car.id });
+  await sleep(250);
+  assert.equal(game.vehicles.seatOf(p)?.seat, 0);
+  const z0 = car.state.pos.z;
+  await drive(c, 1200, 1);
+  assert.ok(Math.abs(car.state.pos.z - z0) < 0.2, 'an empty engine does not drive');
+  c.emit('interact', { kind: 'exitVehicle' });
+  await sleep(250);
+  assert.equal(game.vehicles.seatOf(p), null);
+
+  // Hold a gas can with 6 L and pour it in.
+  p.inventory.slots[0] = { uid: 'can-1', defId: 'gas_can', qty: 1, fuel: 6 };
+  p.inventory.activeHotbar = 0;
+  c.emit('interact', { kind: 'refuel', id: car.id });
+  await sleep(250);
+  assert.equal(car.state.fuel, 6, 'tank got 6 L');
+  assert.equal(p.inventory.slots[0]?.fuel, 0, 'can is empty');
+
+  // Fill the can at the pump, then drive a bit: fuel burns slowly (litres per 100 km).
+  const pump = game.map.fuelPumps[0];
+  p.teleport({ x: pump[0] - 1.2, y: 0.05, z: pump[2] });
+  await drive(c, 300, 0);
+  c.emit('interact', { kind: 'pump', id: 0 });
+  await sleep(250);
+  assert.equal(p.inventory.slots[0]?.fuel, 10, 'can filled at the pump');
+
+  p.teleport({ x: car.state.pos.x - 2, y: 0.05, z: car.state.pos.z });
+  await drive(c, 300, 0);
+  c.emit('interact', { kind: 'vehicle', id: car.id });
+  await sleep(250);
+  await drive(c, 1500, 1);
+  assert.ok(car.state.pos.z > z0 + 3, 'drives with fuel');
+  assert.ok(car.state.fuel < 6 && car.state.fuel > 5.9, `burned a tiny amount: ${car.state.fuel}`);
 });

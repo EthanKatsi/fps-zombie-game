@@ -362,6 +362,38 @@ Everything is generated in code (no downloaded assets):
   - To redo a conversion: run `FBX2glTF.exe --binary --input x.fbx --output x` from the npm package
     `fbx2gltf@0.9.7`, then apply the same material fixes.
 
+## Extra: vehicle fixes, fuel and gas cans (owner feedback after the big world)
+
+- **Lag fixed.**
+  - The server no longer "coasts" a driven vehicle on ticks where the driver's input hasn't arrived yet.
+    Doing that double-stepped it versus the client's prediction and caused constant rubber-banding.
+    Prediction corrections are now 0.
+  - `world.step()` costs about 7.5 ms on the big map, so it is throttled: at most every 0.5 s on the server and
+    every 0.3 s on the client, only when vehicles moved or appeared.
+  - Vehicle corrections blend smoothly.
+- **New vehicle physics.** The character-controller box sank into flat ground and snagged on lips. Now:
+  - the collision box floats 0.38 m above the ground, so curbs and road edges pass under it, and only slides
+    along walls;
+  - ground height comes from 5 downward rays, so the vehicle rides the highest one and climbs curbs;
+  - gravity applies when airborne.
+- **Damage only from real crashes.** The body actually has to hit something.
+  - Above 6 m/s of speed lost: 25 + 6 per m/s. A sedan survives about five hard crashes.
+  - Occupants are hurt only above about 50 km/h of speed lost.
+  - Running over zombies no longer damages the vehicle.
+  - Zombies can't bite people inside sedans or pickups (motorcycles can be).
+- **Fuel** (`VehicleState.fuel`, predicted like everything else) uses real figures:
+  - sedan 50 L at 7.5 L/100 km (about 650 km);
+  - pickup 80 L at 12 L/100 km;
+  - motorcycle 16 L at 4.5 L/100 km;
+  - plus idling.
+  - Vehicles spawn with 15-60% of a tank. Empty: the engine stops, but you can still roll and steer.
+  - The HUD shows fuel in litres.
+- **Gas cans** (`gas_can`, `ItemStack.fuel`, 10 L).
+  - Found in car trunks, hardware shelves and grocery stock rooms; often empty.
+  - Hold one and press E on a vehicle to pour it in.
+  - Press E at a gas station pump (`MapData.fuelPumps`) to fill the can.
+- Protocol v12. Test: vehicles.test.ts "no fuel, no driving...".
+
 ## Extra: big world and drivable vehicles (requested after M7)
 
 - **New default map `world`** (`generateWorld.ts`, `WORLD` config), 1.28 km across:

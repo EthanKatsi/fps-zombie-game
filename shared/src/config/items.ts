@@ -36,6 +36,10 @@ const defs: ItemDef[] = [
   { id: 'vest_plate', name: 'Plate Carrier', category: 'armor', weight: 7.0, maxStack: 1, maxDurability: 240,
     armor: { slot: 'body', reduction: 0.5, equipTimeMs: 4000 }, description: 'Steel plates. Heavy, but rifle-rated.' },
 
+  // ---- fuel
+  { id: 'gas_can', name: 'Gas Can', category: 'tool', weight: 3, maxStack: 1, fuelCan: { liters: 10 },
+    description: 'Holds 10 L of gasoline. Hold it and press E on a vehicle to refuel it; refill it at a gas station pump.' },
+
   // ---- ammo
   { id: 'ammo_9mm', name: '9mm Rounds', category: 'ammo', weight: 0.01, maxStack: 60 },
   { id: 'ammo_12g', name: '12 Gauge Shells', category: 'ammo', weight: 0.04, maxStack: 24 },

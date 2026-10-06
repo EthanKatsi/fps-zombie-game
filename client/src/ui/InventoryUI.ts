@@ -34,6 +34,16 @@ export const renderItem = (el: HTMLElement, s: ItemStack | null): void => {
     q.textContent = String(s.qty);
     el.appendChild(q);
   }
+  if (def?.fuelCan) {
+    // Gas cans show how full they are.
+    const d = document.createElement('div');
+    d.className = 'dura';
+    const fill = document.createElement('div');
+    fill.style.width = `${Math.max(0, Math.min(1, (s.fuel ?? 0) / def.fuelCan.liters)) * 100}%`;
+    fill.style.background = '#d9b25a';
+    d.appendChild(fill);
+    el.appendChild(d);
+  }
   if (def?.maxDurability && s.durability !== undefined) {
     const d = document.createElement('div');
     d.className = 'dura';
@@ -279,6 +289,7 @@ export class InventoryUI {
     }
     if (def.consume && ref.owner === 'self') lines.push(`<div class="muted">Double-click (or left-click in hand) to use</div>`);
     if (s.loadedAmmo !== undefined) lines.push(`<div class="muted">Loaded: ${s.loadedAmmo}</div>`);
+    if (def.fuelCan) lines.push(`<div>Fuel: ${(s.fuel ?? 0).toFixed(1)} / ${def.fuelCan.liters} L</div>`);
     if (def.maxDurability && s.durability !== undefined) {
       lines.push(`<div class="muted">Condition ${Math.round((s.durability / def.maxDurability) * 100)}%</div>`);
     }

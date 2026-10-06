@@ -115,6 +115,8 @@ export interface MapData {
   navLinks: NavLink[];
   spawnPoints: Vec3[];
   vehicleSpawns: VehicleSpawn[];
+  /** Gas station pumps (gas cans are filled here). */
+  fuelPumps: [number, number, number][];
 }
 
 /** Create fixed colliders for every map box. Call world.step() once afterwards. */

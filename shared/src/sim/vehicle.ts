@@ -1,18 +1,21 @@
 import type { Collider, KinematicCharacterController, World } from '@dimforge/rapier3d-compat';
 import { VEHICLES, type VehicleDef, type VehicleType } from '../config/vehicles';
 import { MOVEMENT } from '../config/movement';
-import { clamp, degToRad, quatFromEulerYXZ } from '../math/math';
+import { clamp, quatFromEulerYXZ } from '../math/math';
 import type { Vec3 } from '../types/common';
 import { VEHICLE_GROUPS, VEHICLE_MOVE_GROUPS } from './collision';
 import { Buttons, type MoveInput, type Rapier } from './movement';
 
 /**
- * Arcade vehicle model on Rapier's kinematic character controller: the collision box slides
- * along walls, steps up curbs and snaps to the ground; throttle/brake/steering are integrated
- * here. Like the player motor it is deterministic, so the driver's client predicts it exactly.
+ * Arcade vehicle model, deterministic like the player motor (the driver's client predicts it):
+ *  - Walls: the collision box floats LIFT above the ground, so curbs, road edges and small lips
+ *    pass underneath; a kinematic character controller slides it along whatever it hits.
+ *  - Ground: rays at the centre and four corners find the surface; the vehicle rides on the
+ *    highest one (wheels climb curbs), falls with gravity when nothing is below.
+ *  - Fuel burns with distance (real-world consumption) plus a little idling.
  */
 export interface VehicleState {
-  /** Ground point under the vehicle's centre (bottom of the collision box). */
+  /** Ground point under the vehicle's centre. */
   pos: Vec3;
   yaw: number;
   /** Signed forward speed (m/s); negative = reversing. */
@@ -21,21 +24,32 @@ export interface VehicleState {
   grounded: boolean;
   /** Smoothed steering, -1 (right) .. 1 (left). */
   steer: number;
+  /** Litres in the tank. Empty = the engine stops (you can still roll and steer). */
+  fuel: number;
 }
 
-export const createVehicleState = (pos: Vec3, yaw = 0): VehicleState => ({
+export const createVehicleState = (pos: Vec3, yaw = 0, fuel = 0): VehicleState => ({
   pos: { ...pos },
   yaw,
   speed: 0,
   vy: 0,
   grounded: false,
   steer: 0,
+  fuel,
 });
 
 export const cloneVehicleState = (s: VehicleState): VehicleState => ({ ...s, pos: { ...s.pos } });
 
-/** Half extents of the collision box: it reaches from the ground to the roof. */
-const halfExtents = (d: VehicleDef) => ({ x: d.size[0] / 2, y: (d.clearance + d.size[1]) / 2, z: d.size[2] / 2 });
+/** Height of the collision box's bottom above the ground: anything lower is driven over. */
+const LIFT = 0.38;
+const EDGE = 0.08;
+
+/** The collision box spans LIFT .. roof; centre height above the ground and half extents. */
+const body = (d: VehicleDef) => {
+  const top = d.clearance + d.size[1];
+  const hy = (top - LIFT) / 2;
+  return { hx: d.size[0] / 2, hy, hz: d.size[2] / 2, cy: LIFT + hy };
+};
 
 /** Player feet sit this far below the seat (hip) point; seated players use crouch hitboxes. */
 export const SEAT_HIP = 0.5;
@@ -61,9 +75,9 @@ export const seatFeet = (type: VehicleType, s: VehicleState, seat: number): Vec3
 
 /** Create a vehicle's collision box (an obstacle for players and other vehicles). */
 export const createVehicleCollider = (R: Rapier, world: World, type: VehicleType, s: VehicleState): Collider => {
-  const he = halfExtents(VEHICLES[type]);
-  const desc = R.ColliderDesc.cuboid(he.x, he.y, he.z)
-    .setTranslation(s.pos.x, s.pos.y + he.y, s.pos.z)
+  const b = body(VEHICLES[type]);
+  const desc = R.ColliderDesc.roundCuboid(b.hx - EDGE, b.hy - EDGE, b.hz - EDGE, EDGE)
+    .setTranslation(s.pos.x, s.pos.y + b.cy, s.pos.z)
     .setRotation(quatFromEulerYXZ(0, s.yaw, 0))
     .setCollisionGroups(VEHICLE_GROUPS);
   return world.createCollider(desc);
@@ -71,14 +85,14 @@ export const createVehicleCollider = (R: Rapier, world: World, type: VehicleType
 
 /** Move a vehicle's collider to a state (spawn, reconciliation, remote interpolation). */
 export const placeVehicleCollider = (c: Collider, type: VehicleType, s: VehicleState): void => {
-  const he = halfExtents(VEHICLES[type]);
-  c.setTranslation({ x: s.pos.x, y: s.pos.y + he.y, z: s.pos.z });
+  const b = body(VEHICLES[type]);
+  c.setTranslation({ x: s.pos.x, y: s.pos.y + b.cy, z: s.pos.z });
   c.setRotation(quatFromEulerYXZ(0, s.yaw, 0));
 };
 
 export interface VehicleStepResult {
   state: VehicleState;
-  /** Speed (m/s) lost to collisions this tick: crash damage on the server. */
+  /** Speed (m/s) lost by hitting something solid this tick: crash damage on the server. */
   impact: number;
 }
 
@@ -94,21 +108,37 @@ export class VehicleMotor {
     readonly collider: Collider,
   ) {
     this.def = VEHICLES[type];
-    const c = world.createCharacterController(0.03);
-    c.enableAutostep(0.4, 0.15, false);
-    c.enableSnapToGround(0.5);
-    c.setMaxSlopeClimbAngle(degToRad(40));
-    c.setMinSlopeSlideAngle(degToRad(45));
+    // Horizontal sliding only: no stepping, snapping or slope climbing (the ground rays do that).
+    const c = world.createCharacterController(0.02);
     c.setSlideEnabled(true);
+    c.setMaxSlopeClimbAngle(0);
     c.setApplyImpulsesToDynamicBodies(false);
     this.controller = c;
-    const he = halfExtents(this.def);
+    const b = body(this.def);
     // Slightly smaller box for "can I turn here" checks (touching contacts aren't overlaps).
-    this.probe = new R.Cuboid(he.x - 0.06, he.y - 0.12, he.z - 0.06);
+    this.probe = new R.Cuboid(b.hx - 0.06, b.hy - 0.06, b.hz - 0.06);
   }
 
   sync(s: VehicleState): void {
     placeVehicleCollider(this.collider, this.type, s);
+  }
+
+  /** Highest ground under the centre and corners, searching down from `fromY`. */
+  private groundAt(x: number, z: number, yaw: number, fromY: number): number | null {
+    const d = this.def;
+    const { fx, fz, rx, rz } = vehicleAxes(yaw);
+    const u = d.size[0] / 2 - 0.25, w = d.size[2] / 2 - 0.4;
+    let best: number | null = null;
+    for (const [a, b] of [[0, 0], [u, w], [-u, w], [u, -w], [-u, -w]]) {
+      const ox = x + rx * a + fx * b, oz = z + rz * a + fz * b;
+      const ray = new this.R.Ray({ x: ox, y: fromY, z: oz }, { x: 0, y: -1, z: 0 });
+      const hit = this.world.castRay(ray, 3, true, this.R.QueryFilterFlags.EXCLUDE_SENSORS, VEHICLE_MOVE_GROUPS, this.collider);
+      if (hit) {
+        const gy = fromY - hit.timeOfImpact;
+        if (best === null || gy > best) best = gy;
+      }
+    }
+    return best;
   }
 
   /**
@@ -118,7 +148,8 @@ export class VehicleMotor {
   step(state: VehicleState, input: MoveInput | null, dt: number): VehicleStepResult {
     const d = this.def;
     const s = cloneVehicleState(state);
-    const throttle = input ? clamp(input.mz, -1, 1) : 0;
+    const running = input !== null && s.fuel > 0;
+    const throttle = running ? clamp(input!.mz, -1, 1) : 0;
     const steerIn = input ? -clamp(input.mx, -1, 1) : 0; // A = left = yaw increases
     const handbrake = input ? (input.b & Buttons.jump) !== 0 : false;
 
@@ -142,12 +173,12 @@ export class VehicleMotor {
     const sp = Math.abs(s.speed);
     const grip = clamp(sp / 4, 0, 1) * (1 - 0.45 * clamp(sp / d.maxSpeed, 0, 1));
     const yawRate = s.steer * d.turnRate * grip * Math.sign(s.speed) * (handbrake ? 1.5 : 1);
+    const b = body(d);
     if (Math.abs(yawRate) > 1e-5 && s.grounded) {
       const newYaw = s.yaw + yawRate * dt;
       // Don't rotate into a wall.
-      const c = this.collider.translation();
       const hit = this.world.intersectionWithShape(
-        c,
+        { x: s.pos.x, y: s.pos.y + b.cy, z: s.pos.z },
         quatFromEulerYXZ(0, newYaw, 0),
         this.probe,
         this.R.QueryFilterFlags.EXCLUDE_SENSORS,
@@ -160,31 +191,49 @@ export class VehicleMotor {
       }
     }
 
-    // ---- move: forward motion + gravity, collide & slide
-    s.vy = s.grounded ? -2 : Math.max(-40, s.vy - MOVEMENT.gravity * dt);
+    // ---- horizontal: slide the raised body along walls
     const { fx, fz } = vehicleAxes(s.yaw);
-    const desired = { x: fx * s.speed * dt, y: s.vy * dt, z: fz * s.speed * dt };
-    this.controller.computeColliderMovement(this.collider, desired, this.R.QueryFilterFlags.EXCLUDE_SENSORS, VEHICLE_MOVE_GROUPS);
+    const want = { x: fx * s.speed * dt, y: 0, z: fz * s.speed * dt };
+    this.collider.setTranslation({ x: s.pos.x, y: s.pos.y + b.cy, z: s.pos.z });
+    this.controller.computeColliderMovement(this.collider, want, this.R.QueryFilterFlags.EXCLUDE_SENSORS, VEHICLE_MOVE_GROUPS);
     const mv = this.controller.computedMovement();
-    const c = this.collider.translation();
-    this.collider.setTranslation({ x: c.x + mv.x, y: c.y + mv.y, z: c.z + mv.z });
-    s.grounded = this.controller.computedGrounded();
-    if (s.grounded) s.vy = 0;
-
-    // Blocked: the speed along our heading is whatever we actually achieved.
+    const nx = s.pos.x + mv.x, nz = s.pos.z + mv.z;
     let impact = 0;
-    if (Math.abs(s.speed) > 0.3) {
+    if (this.controller.numComputedCollisions() > 0 && Math.abs(s.speed) > 0.3) {
+      // Hit something: keep only the speed we actually made along our heading.
       const achieved = (mv.x * fx + mv.z * fz) / dt;
       const kept = s.speed > 0 ? clamp(achieved, 0, s.speed) : clamp(achieved, s.speed, 0);
-      // Small losses are slopes and scraping; only big ones count as impacts.
-      if (Math.abs(s.speed - kept) > 0.5) {
-        impact = Math.abs(s.speed - kept);
-        s.speed = kept;
+      impact = Math.abs(s.speed - kept);
+      s.speed = kept;
+    }
+
+    // ---- vertical: ride on the highest ground under the wheels, or fall
+    const ground = this.groundAt(nx, nz, s.yaw, s.pos.y + LIFT);
+    let ny: number;
+    if (ground !== null && s.pos.y + s.vy * dt <= ground + 0.25 && s.vy <= 0.5) {
+      ny = ground;
+      s.vy = 0;
+      s.grounded = true;
+    } else {
+      s.vy = Math.max(-40, s.vy - MOVEMENT.gravity * dt);
+      ny = s.pos.y + s.vy * dt;
+      if (ground !== null && ny <= ground) {
+        ny = ground;
+        s.vy = 0;
+        s.grounded = true;
+      } else {
+        s.grounded = false;
       }
     }
 
-    const he = halfExtents(d);
-    s.pos = { x: c.x + mv.x, y: c.y + mv.y - he.y, z: c.z + mv.z };
+    // ---- fuel: real-world consumption per km, plus idling while someone sits at the wheel
+    if (running) {
+      const km = (Math.abs(s.speed) * dt) / 1000;
+      s.fuel = Math.max(0, s.fuel - km * (d.litersPer100km / 100) - (d.idleLitersPerHour / 3600) * dt);
+    }
+
+    s.pos = { x: nx, y: ny, z: nz };
+    this.collider.setTranslation({ x: nx, y: ny + b.cy, z: nz });
     return { state: s, impact };
   }
 

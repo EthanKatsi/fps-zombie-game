@@ -49,6 +49,8 @@ export interface ItemDef {
    * to its zone and loses durability by the amount absorbed.
    */
   armor?: { slot: ArmorSlot; reduction: number; equipTimeMs: number };
+  /** A fuel container (gas can): how many litres it holds when full. */
+  fuelCan?: { liters: number };
 }
 
 export interface ItemStack {
@@ -59,4 +61,6 @@ export interface ItemStack {
   durability?: number;
   /** Rounds currently loaded (ranged weapons only). */
   loadedAmmo?: number;
+  /** Litres of gasoline in a gas can. */
+  fuel?: number;
 }

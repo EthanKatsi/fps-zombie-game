@@ -7,7 +7,7 @@ import type { VehicleState } from '../sim/vehicle';
 import type { VehicleType } from '../config/vehicles';
 
 /** Bump when the wire format changes; server rejects mismatched clients. */
-export const PROTOCOL_VERSION = 11;
+export const PROTOCOL_VERSION = 12;
 
 // ---------- Client -> Server ----------
 
@@ -59,6 +59,8 @@ export interface NetVehicle {
   /** Health 0..1, and whether it's a burnt-out wreck. */
   hp: number;
   w: boolean;
+  /** Fuel 0..1 of a tank. */
+  f: number;
   /** Has a driver (engine running). */
   d: boolean;
 }
@@ -164,7 +166,11 @@ export type InteractRequest =
   | { kind: 'pickup'; id: string }
   /** Get into a vehicle (driver seat if free), or out of the one you're in. */
   | { kind: 'vehicle'; id: number }
-  | { kind: 'exitVehicle' };
+  | { kind: 'exitVehicle' }
+  /** Pour the gas can in your hand into a vehicle. */
+  | { kind: 'refuel'; id: number }
+  /** Fill the gas can in your hand at a gas station pump (MapData.fuelPumps index). */
+  | { kind: 'pump'; id: number };
 
 /** An item lying in the world. */
 export interface GroundItemNet {

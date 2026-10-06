@@ -836,3 +836,16 @@ details.settings summary {
   font-size: 10px;
   opacity: 0.55;
 }
+
+#vehicle-hud .vh-fuel-text {
+  font-size: 11px;
+  opacity: 0.8;
+}
+#vehicle-hud .vh-fuel {
+  height: 4px;
+  margin: 3px 0 6px;
+  background: rgba(255, 255, 255, 0.12);
+}
+#vehicle-hud .vh-fuel > div {
+  height: 100%;
+}

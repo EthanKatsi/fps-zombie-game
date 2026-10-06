@@ -57,6 +57,7 @@ export class GameServer {
   /** Created by enableZombies() once the navmesh is ready. */
   zombies: ZombieSystem | null = null;
   private doorsDirty = false;
+  private lastVehicleStep = 0;
   /** Door id -> time (ms) until which it can't be toggled again (swing animation). */
   private readonly doorBusyUntil = new Map<number, number>();
   readonly players = new Map<string, ServerPlayer>();
@@ -84,7 +85,7 @@ export class GameServer {
     this.items = new InventorySystem(R, this.world, this.map, () => this.players.values());
     this.survival = new SurvivalSystem(this.items, () => this.spawnPoint(), (e) => this.io.emit('killFeed', e));
     this.dummies = new DummySystem(this.map.dummies, io);
-    this.vehicles = new VehicleSystem(R, this.world, this.map, () => this.players.values(), this.survival, this.noise, () => this.zombies);
+    this.vehicles = new VehicleSystem(R, this.world, this.map, () => this.players.values(), this.survival, this.noise, () => this.zombies, this.items);
     this.world.step(); // vehicle colliders
     this.weapons = new WeaponSystem(
       R, this.world, () => this.players.values(), this.survival, this.items, this.dummies, this.noise,
@@ -101,6 +102,7 @@ export class GameServer {
     const zs = new ZombieSystem(this.R, this.world, nav, this.map, this.doors, () => this.players.values(), this.survival, this.noise, this.items);
     zs.autoSpawn = autoSpawn;
     zs.isNight = () => this.clock.isNight();
+    zs.canBite = (p) => this.vehicles.canBeBitten(p);
     this.zombies = zs;
     return zs;
   }
@@ -288,6 +290,8 @@ export class GameServer {
     else if (req?.kind === 'container') this.items.openMapContainer(p, req.id);
     else if (req?.kind === 'pickup') this.items.pickup(p, req.id);
     else if (req?.kind === 'exitVehicle') this.vehicles.exit(p);
+    else if (req?.kind === 'refuel' && Number.isInteger(req.id)) this.vehicles.refuel(p, req.id);
+    else if (req?.kind === 'pump' && Number.isInteger(req.id)) this.vehicles.pump(p, req.id, this.map.fuelPumps);
     else if (req?.kind === 'vehicle' && Number.isInteger(req.id)) {
       if (this.vehicles.seatOf(p)) this.vehicles.exit(p);
       else this.vehicles.enter(p, req.id);
@@ -365,9 +369,12 @@ export class GameServer {
       }
     }
     this.vehicles.update(performance.now(), TICK_DT);
-    if (this.vehicles.moved) {
-      this.world.step(); // moved vehicle colliders must be visible to the next tick's queries
+    // Stepping the world refreshes scene queries for moved vehicle colliders, but costs ~7 ms on the
+    // big map, so do it at most twice a second (moving obstacles are slightly stale in between).
+    if (this.vehicles.moved && performance.now() - this.lastVehicleStep > 500) {
+      this.world.step();
       this.vehicles.moved = false;
+      this.lastVehicleStep = performance.now();
     }
 
     const now = performance.now();

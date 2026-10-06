@@ -326,6 +326,9 @@ export class ZombieSystem {
     }
   }
 
+  /** Can this player be bitten right now? (Not inside a closed vehicle.) Set by the game server. */
+  canBite: (p: ServerPlayer) => boolean = () => true;
+
   /** Lunge at the target when in reach; the hit lands after the windup if still in reach. */
   private updateAttack(z: ZombieEntity, now: number): void {
     const t = z.target;
@@ -335,7 +338,7 @@ export class ZombieSystem {
       z.cooldownUntil = now + z.def.attackCooldownMs;
       if (t && t.alive) {
         const d = Math.hypot(t.state.pos.x - z.pos.x, t.state.pos.z - z.pos.z);
-        if (d <= z.def.attackRange * 1.25 && Math.abs(t.state.pos.y - z.pos.y) < 1.6) {
+        if (d <= z.def.attackRange * 1.25 && Math.abs(t.state.pos.y - z.pos.y) < 1.6 && this.canBite(t)) {
           if (Math.random() < ZOMBIES.bleedChance) t.record.stats.bleeding = true;
           this.survival.damage(t, z.def.attackDamage, 'zombie', null, false, z.pos);
         }
