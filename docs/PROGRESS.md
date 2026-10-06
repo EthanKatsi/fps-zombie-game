@@ -292,6 +292,41 @@ Everything is generated in code (no downloaded assets):
   - Verified with the three.js example `Soldier.glb` as both zombie and player, then removed.
 - **Menu → Credits** lists the model `credit` strings (required for CC-BY) and the Poly Haven texture names.
 
+## Extra: sniper rifle and armour (requested after M7)
+
+- **Sniper rifle** (`sniper_rifle`): bolt-action, `.308 Rounds` (`ammo_308`), 95 damage with a ×2.5 headshot,
+  0.55 shots/s, 5-round magazine, 400 m range and an 11° scope.
+  - Spread is huge from the hip or on the move.
+  - Rare loot from gun shop lockers and police crates; the ammo comes from gun shop cabinets and police crates.
+  - `WeaponDef.scope` now marks the weapons that get the full-screen scope (hunting rifle, sniper).
+  - Mouse sensitivity scales with zoom: `tan(fov/2)` ratio in `Game.updateAim`.
+  - Note: players and zombies are only sent within `NETWORK.interestRadius` (150 m), so that is the effective
+    sniping range for now.
+- **Armour** (category `armor`, `ItemDef.armor {slot, reduction, equipTimeMs}`):
+
+  | Item | Zone | Reduction | Durability |
+  |---|---|---|---|
+  | Riot Helmet | head | 35% | 120 |
+  | Combat Helmet | head | 50% | 180 |
+  | Police Vest | body | 30% | 160 |
+  | Plate Carrier | body | 50% | 240 |
+
+  - To wear a piece, "use" it (click while holding it, or double-click it in the inventory). This goes through
+    `SurvivalSystem.startUse` with a progress bar, and swaps with whatever was worn.
+  - Worn pieces live in `Inventory.equipment {head, body}` (saved in the inventory JSON, so no migration). They
+    show under "Worn armour" in the inventory; double-click or right-click to take one off
+    (`InventoryOp unequip`).
+  - `SurvivalSystem.damage` routes player and zombie hits through `absorbWithArmor`: the helmet for headshots,
+    the vest otherwise. Durability drops by the absorbed amount × `COMBAT.armorWearPerDamage`. A piece breaks at
+    0, with a notice.
+  - Starvation, thirst, bleeding and falls ignore armour.
+  - Worn armour goes into the death bag.
+  - Others see it: `PlayerFlags.helmet`/`vest` (protocol v9), drawn by `Humanoid.setArmor`. Loaded models
+    ignore it.
+  - Loot: police lockers (riot helmet, police vest), police crates (combat helmet, plate carrier), rare zombie
+    drops.
+  - Test: `server/test/survival.test.ts` "armour: ...".
+
 ## Extra: assault rifle (requested after M7)
 
 - An `assault_rifle` item plus weapon. It's the first **full-auto** weapon (`WeaponDef.automatic`: hold to fire):

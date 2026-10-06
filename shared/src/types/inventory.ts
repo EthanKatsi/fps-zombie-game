@@ -1,4 +1,4 @@
-import type { ItemStack } from './item';
+import type { ArmorSlot, ItemStack } from './item';
 
 /**
  * Slot-based inventory. Slots [0, HOTBAR_SIZE) are the hotbar (keys 1-9).
@@ -8,7 +8,11 @@ export interface Inventory {
   slots: (ItemStack | null)[];
   /** Index into slots of the currently held hotbar item. */
   activeHotbar: number;
+  /** Worn armour (optional in saved data from before armour existed). */
+  equipment?: Equipment;
 }
+
+export type Equipment = Record<ArmorSlot, ItemStack | null>;
 
 /** A world container (cabinet, fridge, car trunk, storage chest, loot bag). */
 export type ContainerKind =
@@ -38,6 +42,8 @@ export type InventoryOp =
   | { op: 'move'; from: SlotRef; to: SlotRef; qty?: number }
   | { op: 'drop'; from: SlotRef; qty?: number }
   | { op: 'use'; slot: number }
+  /** Take off worn armour into the first free inventory slot. */
+  | { op: 'unequip'; slot: ArmorSlot }
   | { op: 'select'; hotbar: number }
   | { op: 'craft'; recipeId: string };
 

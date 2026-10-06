@@ -5,7 +5,7 @@ import type { SurvivalStats } from '../types/player';
 import type { MoveInput, MoveState } from '../sim/movement';
 
 /** Bump when the wire format changes; server rejects mismatched clients. */
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 
 // ---------- Client -> Server ----------
 
@@ -34,6 +34,9 @@ export const PlayerFlags = {
   crouching: 1,
   grounded: 2,
   sprinting: 4,
+  /** Wearing a helmet / body armour (drawn on the character). */
+  helmet: 8,
+  vest: 16,
 } as const;
 
 export interface JoinAccepted {

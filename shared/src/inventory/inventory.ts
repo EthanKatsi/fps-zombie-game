@@ -27,6 +27,7 @@ export const canMerge = (a: ItemStack, b: ItemStack): boolean => a.defId === b.d
 export const createInventory = (): Inventory => ({
   slots: Array.from({ length: INVENTORY.slots }, () => null),
   activeHotbar: 0,
+  equipment: { head: null, body: null },
 });
 
 /** Repair inventories loaded from storage: right slot count, known items, sane quantities. */
@@ -42,6 +43,10 @@ export const normalizeInventory = (inv: Partial<Inventory> | null | undefined): 
   }
   const hb = Math.floor(Number(inv?.activeHotbar));
   out.activeHotbar = hb >= 0 && hb < INVENTORY.hotbarSize ? hb : 0;
+  for (const slot of ['head', 'body'] as const) {
+    const s = inv?.equipment?.[slot];
+    if (s && typeof s.defId === 'string' && getItemDef(s.defId)?.armor?.slot === slot) out.equipment![slot] = { ...s, qty: 1 };
+  }
   return out;
 };
 

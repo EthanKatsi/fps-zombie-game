@@ -14,7 +14,11 @@ export type ItemCategory =
   | 'material'
   | 'tool'
   | 'buildable'
-  | 'explosive';
+  | 'explosive'
+  | 'armor';
+
+/** Where a piece of armour is worn. Helmets protect against headshots, vests against body hits. */
+export type ArmorSlot = 'head' | 'body';
 
 export type ItemDefId = string;
 
@@ -40,6 +44,11 @@ export interface ItemDef {
   structureKind?: string;
   /** Items with durability start at this value. */
   maxDurability?: number;
+  /**
+   * Wearable armour: "use" it to put it on. Absorbs `reduction` (0-1) of player/zombie damage
+   * to its zone and loses durability by the amount absorbed.
+   */
+  armor?: { slot: ArmorSlot; reduction: number; equipTimeMs: number };
 }
 
 export interface ItemStack {

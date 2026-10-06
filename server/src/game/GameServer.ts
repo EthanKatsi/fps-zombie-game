@@ -367,7 +367,9 @@ export class GameServer {
         f:
           (s.crouching ? PlayerFlags.crouching : 0) |
           (s.grounded ? PlayerFlags.grounded : 0) |
-          (s.sprinting ? PlayerFlags.sprinting : 0),
+          (s.sprinting ? PlayerFlags.sprinting : 0) |
+          (p.inventory.equipment?.head ? PlayerFlags.helmet : 0) |
+          (p.inventory.equipment?.body ? PlayerFlags.vest : 0),
         h: p.inventory.slots[p.inventory.activeHotbar]?.defId ?? '',
         hc: p.hitCount,
       });

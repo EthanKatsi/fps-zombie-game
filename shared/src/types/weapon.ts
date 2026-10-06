@@ -1,5 +1,5 @@
 export type WeaponKind = 'melee' | 'hitscan' | 'projectile';
-export type AmmoType = 'ammo_9mm' | 'ammo_12g' | 'ammo_556' | 'bolt';
+export type AmmoType = 'ammo_9mm' | 'ammo_12g' | 'ammo_556' | 'ammo_308' | 'bolt';
 
 /** Static weapon definition. All numbers live in config/weapons.ts for balancing. */
 export interface WeaponDef {
@@ -42,6 +42,8 @@ export interface WeaponDef {
   projectileGravity?: number;
   /** Field of view while aiming down sights. */
   adsFov?: number;
+  /** Aiming switches to a full-screen scope overlay (first person). */
+  scope?: boolean;
 }
 
 /** Runtime weapon state held by the server for the active item. */

@@ -95,7 +95,7 @@ export const LOOT_TABLES: Record<string, LootTable> = {
 
   gunshop_locker: {
     rolls: [1, 2], empty: 0.35,
-    entries: [{ item: 'pistol', w: 4 }, { item: 'shotgun', w: 2 }, { item: 'rifle', w: 1.2 }, { item: 'crossbow', w: 1 }, { item: 'assault_rifle', w: 0.7 }],
+    entries: [{ item: 'pistol', w: 4 }, { item: 'shotgun', w: 2 }, { item: 'rifle', w: 1.2 }, { item: 'crossbow', w: 1 }, { item: 'assault_rifle', w: 0.7 }, { item: 'sniper_rifle', w: 0.4 }],
   },
   gunshop_cabinet: {
     rolls: [1, 3], empty: 0.25,
@@ -103,6 +103,7 @@ export const LOOT_TABLES: Record<string, LootTable> = {
       { item: 'ammo_9mm', w: 5, qty: [8, 24] },
       { item: 'ammo_12g', w: 4, qty: [4, 10] },
       { item: 'ammo_556', w: 2, qty: [5, 15] },
+      { item: 'ammo_308', w: 1.2, qty: [3, 10] },
       { item: 'bolt', w: 2, qty: [3, 8] },
       { item: 'pistol', w: 0.8 },
     ],
@@ -120,6 +121,8 @@ export const LOOT_TABLES: Record<string, LootTable> = {
       { item: 'pistol', w: 3 },
       { item: 'shotgun', w: 1.5 },
       { item: 'assault_rifle', w: 0.6 },
+      { item: 'vest_police', w: 1.2 },
+      { item: 'helmet_riot', w: 1.2 },
       { item: 'ammo_9mm', w: 4, qty: [6, 20] },
       { item: 'ammo_12g', w: 3, qty: [4, 8] },
       { item: 'bat', w: 1 },
@@ -131,7 +134,16 @@ export const LOOT_TABLES: Record<string, LootTable> = {
   police_cabinet: { rolls: [1, 2], empty: 0.4, entries: [{ item: 'bandage', w: 3 }, { item: 'painkillers', w: 2 }, { item: 'ammo_9mm', w: 2, qty: [3, 10] }] },
   police_crate: {
     rolls: [1, 3], empty: 0.3,
-    entries: [{ item: 'ammo_556', w: 3, qty: [10, 30] }, { item: 'ammo_12g', w: 2, qty: [4, 10] }, { item: 'rifle', w: 0.5 }, { item: 'assault_rifle', w: 0.5 }],
+    entries: [
+      { item: 'ammo_556', w: 3, qty: [10, 30] },
+      { item: 'ammo_12g', w: 2, qty: [4, 10] },
+      { item: 'ammo_308', w: 1, qty: [5, 10] },
+      { item: 'rifle', w: 0.5 },
+      { item: 'assault_rifle', w: 0.5 },
+      { item: 'sniper_rifle', w: 0.3 },
+      { item: 'vest_plate', w: 0.4 },
+      { item: 'helmet_combat', w: 0.5 },
+    ],
   },
 
   // ---------------------------------------------------------------- streets
@@ -158,6 +170,8 @@ export const LOOT_TABLES: Record<string, LootTable> = {
       { item: 'energy_bar', w: 2 },
       { item: 'water_bottle', w: 1 },
       { item: 'scrap_metal', w: 2 },
+      { item: 'helmet_riot', w: 0.15 },
+      { item: 'vest_police', w: 0.1 },
     ],
   },
 

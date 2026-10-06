@@ -21,13 +21,26 @@ const defs: ItemDef[] = [
   { id: 'rifle', name: 'Hunting Rifle', category: 'ranged', weight: 4.0, maxStack: 1, weaponId: 'rifle', maxDurability: 180 },
   { id: 'assault_rifle', name: 'Assault Rifle', category: 'ranged', weight: 3.6, maxStack: 1, weaponId: 'assault_rifle', maxDurability: 300,
     description: 'Full-auto. Loud enough to wake the whole block.' },
+  { id: 'sniper_rifle', name: 'Sniper Rifle', category: 'ranged', weight: 6.5, maxStack: 1, weaponId: 'sniper_rifle', maxDurability: 150,
+    description: 'Bolt-action .308 with a high-power scope. Hold right mouse to zoom.' },
   { id: 'crossbow', name: 'Crossbow', category: 'ranged', weight: 3.0, maxStack: 1, weaponId: 'crossbow', maxDurability: 150,
     description: 'Silent. Bolts can be recovered.' },
+
+  // ---- armour (use it from the hotbar to put it on; worn pieces show in the inventory)
+  { id: 'helmet_riot', name: 'Riot Helmet', category: 'armor', weight: 1.4, maxStack: 1, maxDurability: 120,
+    armor: { slot: 'head', reduction: 0.35, equipTimeMs: 1500 }, description: 'Police issue. Takes the edge off a headshot.' },
+  { id: 'helmet_combat', name: 'Combat Helmet', category: 'armor', weight: 1.6, maxStack: 1, maxDurability: 180,
+    armor: { slot: 'head', reduction: 0.5, equipTimeMs: 1500 }, description: 'Kevlar. Halves damage to the head.' },
+  { id: 'vest_police', name: 'Police Vest', category: 'armor', weight: 3.0, maxStack: 1, maxDurability: 160,
+    armor: { slot: 'body', reduction: 0.3, equipTimeMs: 3000 }, description: 'Soft body armour. Stops pistol rounds and teeth.' },
+  { id: 'vest_plate', name: 'Plate Carrier', category: 'armor', weight: 7.0, maxStack: 1, maxDurability: 240,
+    armor: { slot: 'body', reduction: 0.5, equipTimeMs: 4000 }, description: 'Steel plates. Heavy, but rifle-rated.' },
 
   // ---- ammo
   { id: 'ammo_9mm', name: '9mm Rounds', category: 'ammo', weight: 0.01, maxStack: 60 },
   { id: 'ammo_12g', name: '12 Gauge Shells', category: 'ammo', weight: 0.04, maxStack: 24 },
   { id: 'ammo_556', name: '5.56 Rounds', category: 'ammo', weight: 0.012, maxStack: 60 },
+  { id: 'ammo_308', name: '.308 Rounds', category: 'ammo', weight: 0.025, maxStack: 30 },
   { id: 'bolt', name: 'Crossbow Bolt', category: 'ammo', weight: 0.05, maxStack: 20 },
 
   // ---- food & drink
@@ -81,4 +94,5 @@ export const ITEM_CATEGORY_COLORS: Record<ItemDef['category'], string> = {
   tool: '#c9a43a',
   buildable: '#7a5c3a',
   explosive: '#a8452c',
+  armor: '#4f5d3a',
 };

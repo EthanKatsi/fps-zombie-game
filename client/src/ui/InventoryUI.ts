@@ -51,6 +51,7 @@ export interface InventoryUIActions {
   move(from: SlotRef, to: SlotRef, qty?: number): void;
   drop(from: SlotRef, qty?: number): void;
   craft(recipeId: string): void;
+  unequip(slot: 'head' | 'body'): void;
 }
 
 interface Drag {
@@ -161,7 +162,8 @@ export class InventoryUI {
       if (ref.owner === 'self') {
         el.addEventListener('dblclick', () => {
           const s = this.stackAt(ref);
-          if (s && getItemDef(s.defId)?.consume) this.actions.use(ref.index);
+          const d = s && getItemDef(s.defId);
+          if (d && (d.consume || d.armor)) this.actions.use(ref.index);
         });
       }
       el.addEventListener('contextmenu', (e) => {
@@ -194,6 +196,26 @@ export class InventoryUI {
       renderItem(el, s);
       (i < INVENTORY.hotbarSize ? hb : bp).appendChild(el);
     });
+
+    // Worn armour: double-click or right-click to take it off.
+    const worn = $('inv-equip');
+    worn.replaceChildren();
+    for (const slot of ['head', 'body'] as const) {
+      const el = this.makeSlot(null);
+      el.classList.add('equip-slot');
+      el.dataset.label = slot === 'head' ? 'Helmet' : 'Vest';
+      const piece = this.inv.equipment?.[slot] ?? null;
+      renderItem(el, piece);
+      if (piece) {
+        el.title = getItemDef(piece.defId)?.name ?? '';
+        el.addEventListener('dblclick', () => this.actions.unequip(slot));
+        el.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          this.actions.unequip(slot);
+        });
+      }
+      worn.appendChild(el);
+    }
 
     const w = totalWeight(slots);
     const max = INVENTORY.maxCarryWeight;

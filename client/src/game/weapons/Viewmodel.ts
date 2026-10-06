@@ -60,6 +60,18 @@ const buildModel = (defId: string | null): Model => {
       hand(0, -0.03, -0.2);
       hand(0, -0.04, 0.12);
       return { root: g, muzzle: new THREE.Vector3(0, 0.03, -0.63), kind: 'gun', sightHeight: 0.085 };
+    case 'sniper_rifle':
+      g.add(cyl(0.013, 0.016, 0.78, M.gunmetal, 0, 0.03, -0.42)); // long heavy barrel
+      g.add(cyl(0.022, 0.022, 0.07, M.gunmetal, 0, 0.03, -0.83)); // muzzle brake
+      g.add(box(0.05, 0.065, 0.3, M.rubber, 0, 0.01, -0.02)); // receiver / fore-end
+      g.add(box(0.045, 0.1, 0.32, M.rubber, 0, -0.015, 0.3)); // stock
+      g.add(box(0.035, 0.06, 0.07, M.gunmetal, 0, -0.06, 0.02)); // magazine
+      g.add(cyl(0.03, 0.03, 0.34, M.gunmetal, 0, 0.1, -0.04)); // scope tube
+      g.add(cyl(0.036, 0.03, 0.06, M.gunmetal, 0, 0.1, -0.23)); // objective bell
+      g.add(box(0.012, 0.012, 0.05, M.steel, 0.045, 0.03, 0.08)); // bolt handle
+      hand(0, -0.04, -0.22);
+      hand(0, -0.05, 0.12);
+      return { root: g, muzzle: new THREE.Vector3(0, 0.03, -0.87), kind: 'gun', sightHeight: 0.1 };
     case 'assault_rifle':
       g.add(box(0.045, 0.07, 0.3, M.gunmetal, 0, 0.02, 0.0)); // receiver
       g.add(box(0.05, 0.06, 0.26, M.rubber, 0, 0.02, -0.27)); // handguard

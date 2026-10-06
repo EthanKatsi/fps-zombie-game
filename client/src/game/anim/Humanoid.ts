@@ -56,12 +56,20 @@ const GEO = {
 const DARK = new THREE.MeshStandardMaterial({ color: 0x120d0b, roughness: 1 });
 const HAIR = [0x2a2018, 0x4a3a28, 0x15120f, 0x6b5a45, 0x3a3a38].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.95 }));
 
+const ARMOR_GEO = { helmet: new THREE.SphereGeometry(0.135, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.55) };
+const ARMOR_MAT = {
+  helmet: new THREE.MeshStandardMaterial({ color: 0x3a4030, roughness: 0.6, metalness: 0.1 }),
+  vest: new THREE.MeshStandardMaterial({ color: 0x2c3126, roughness: 0.85 }),
+};
+
 /** What views need from a character body: procedural Humanoid or a loaded ModelRig. */
 export interface CharacterBody {
   readonly root: THREE.Group;
   readonly rightHand: THREE.Object3D;
   update(a: AnimInput): void;
   hit(): void;
+  /** Show worn armour (procedural bodies only; loaded models ignore it). */
+  setArmor?(helmet: boolean, vest: boolean): void;
 }
 
 /** Critically-damped spring towards a target (smooth, no overshoot). */
@@ -78,6 +86,10 @@ export class Humanoid implements CharacterBody {
   readonly rightHand = new THREE.Group();
   private readonly hips = new THREE.Group();
   private readonly spine = new THREE.Group();
+  private head!: THREE.Mesh;
+  private girth = 1;
+  private helmetMesh: THREE.Mesh | null = null;
+  private vestMesh: THREE.Mesh | null = null;
   private readonly chest = new THREE.Group();
   private readonly neck = new THREE.Group();
   private readonly shoulder: [THREE.Group, THREE.Group] = [new THREE.Group(), new THREE.Group()];
@@ -113,12 +125,14 @@ export class Humanoid implements CharacterBody {
     this.hips.add(this.spine);
     const torso = mesh(GEO.torso, look.shirt, this.spine, 0.27);
     torso.scale.set(1.15 * g, 1, 0.75 * g);
+    this.girth = g;
     this.spine.add(this.chest);
     this.chest.position.y = 0.5;
     this.chest.add(this.neck);
     this.neck.position.y = 0.04;
     mesh(GEO.neck, look.skin, this.neck, 0.06);
     const head = mesh(GEO.head, look.skin, this.neck, 0.2, -0.01);
+    this.head = head;
     head.scale.set(0.95, 1.1, 1.0);
     // Face (front of the head is -Z): eye sockets, nose, mouth. Zombies get sunken eyes and a gaping mouth.
     for (const ex of [-0.04, 0.04]) {
@@ -170,6 +184,25 @@ export class Humanoid implements CharacterBody {
   }
 
   /** Called when the character takes a hit: a quick flinch. */
+  setArmor(helmet: boolean, vest: boolean): void {
+    if (helmet && !this.helmetMesh) {
+      // Dome over the top of the head with a short brim.
+      this.helmetMesh = new THREE.Mesh(ARMOR_GEO.helmet, ARMOR_MAT.helmet);
+      this.helmetMesh.position.set(0, 0.025, 0.005);
+      this.helmetMesh.castShadow = true;
+      this.head.add(this.helmetMesh);
+    }
+    if (this.helmetMesh) this.helmetMesh.visible = helmet;
+    if (vest && !this.vestMesh) {
+      this.vestMesh = new THREE.Mesh(GEO.torso, ARMOR_MAT.vest);
+      this.vestMesh.position.y = 0.3;
+      this.vestMesh.scale.set(1.15 * this.girth * 1.12, 0.8, 0.75 * this.girth * 1.3);
+      this.vestMesh.castShadow = true;
+      this.spine.add(this.vestMesh);
+    }
+    if (this.vestMesh) this.vestMesh.visible = vest;
+  }
+
   hit(): void {
     this.flinch = 1;
     this.flinchTwist = (Math.random() - 0.5) * 2;

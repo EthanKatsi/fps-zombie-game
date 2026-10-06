@@ -1,4 +1,4 @@
-import {
+import { COMBAT,
   INVENTORY,
   PVP,
   SURVIVAL,
@@ -104,6 +104,7 @@ export class SurvivalSystem {
     info: { weapon?: string; headshot?: boolean } = {},
   ): void {
     if (!p.alive || !(amount > 0)) return;
+    if (attacker || cause === 'zombie') amount = this.absorbWithArmor(p, amount, info.headshot === true);
     const s = p.record.stats;
     s.health = Math.max(0, s.health - amount);
     if (!quiet) {
@@ -115,6 +116,25 @@ export class SurvivalSystem {
       });
     }
     if (s.health <= 0) this.kill(p, cause, attacker, info);
+  }
+
+  /** Worn armour takes its share of a hit (helmet for headshots, vest otherwise) and wears down. */
+  private absorbWithArmor(p: ServerPlayer, amount: number, headshot: boolean): number {
+    const slot = headshot ? 'head' : 'body';
+    const piece = p.inventory.equipment?.[slot];
+    const armor = piece && getItemDef(piece.defId)?.armor;
+    if (!piece || !armor) return amount;
+    const absorbed = amount * armor.reduction;
+    const max = getItemDef(piece.defId)?.maxDurability ?? 100;
+    piece.durability = (piece.durability ?? max) - absorbed * COMBAT.armorWearPerDamage;
+    if (piece.durability <= 0) {
+      p.inventory.equipment![slot] = null;
+      p.socket.emit('notice', { text: `Your ${getItemDef(piece.defId)?.name ?? 'armour'} broke` });
+    } else {
+      piece.durability = Math.round(piece.durability * 10) / 10;
+    }
+    this.items.sendInventory(p);
+    return amount - absorbed;
   }
 
   /** Landing after a fall. */
@@ -177,6 +197,7 @@ export class SurvivalSystem {
     p.state = createMoveState(spawn.pos, spawn.yaw);
     p.motor.syncCollider(p.state);
     p.inventory.slots = p.inventory.slots.map(() => null);
+    p.inventory.equipment = { head: null, body: null };
     giveStartingKit(p);
     p.history.clear();
     p.pendingAttacks = [];
@@ -192,7 +213,13 @@ export class SurvivalSystem {
     if (!Number.isInteger(slot) || slot < 0 || slot >= p.inventory.slots.length) return;
     const item = p.inventory.slots[slot];
     const def = item && getItemDef(item.defId);
-    if (!item || !def?.consume) return;
+    if (!item || !def) return;
+    if (def.armor) {
+      p.using = { slot, uid: item.uid, defId: item.defId, endsAt: performance.now() + def.armor.equipTimeMs };
+      p.socket.emit('useStarted', { defId: item.defId, durationMs: def.armor.equipTimeMs });
+      return;
+    }
+    if (!def.consume) return;
     const s = p.record.stats;
     const c = def.consume;
     // Don't waste items that would do nothing (allow a point of slack for the constant drain).
@@ -222,6 +249,19 @@ export class SurvivalSystem {
     // Cancelled by sprinting, or the item was moved / dropped meanwhile.
     if (p.state.sprinting || !item || item.uid !== u.uid) return this.cancelUse(p);
     if (now < u.endsAt) return;
+
+    const armor = getItemDef(u.defId)?.armor;
+    if (armor) {
+      // Put it on; whatever was worn there goes back into the same slot.
+      const eq = (p.inventory.equipment ??= { head: null, body: null });
+      const prev = eq[armor.slot];
+      eq[armor.slot] = item;
+      p.inventory.slots[u.slot] = prev;
+      p.using = null;
+      p.socket.emit('useEnded', { completed: true });
+      this.items.sendInventory(p);
+      return;
+    }
 
     const c = getItemDef(u.defId)!.consume!;
     const s = p.record.stats;

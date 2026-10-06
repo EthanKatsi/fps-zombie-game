@@ -155,9 +155,22 @@ export class InventorySystem {
       case 'craft':
         return this.craft(p, op.recipeId);
       case 'use':
-        this.notice(p, 'Using items arrives with survival stats (milestone 4)');
         return;
+      case 'unequip':
+        return this.unequip(p, op.slot);
     }
+  }
+
+  private unequip(p: ServerPlayer, slot: unknown): void {
+    if (slot !== 'head' && slot !== 'body') return;
+    const piece = p.inventory.equipment?.[slot];
+    if (!piece) return;
+    if (p.using) return;
+    const free = p.inventory.slots.indexOf(null);
+    if (free < 0) return this.notice(p, 'No space to take it off');
+    p.inventory.slots[free] = piece;
+    p.inventory.equipment![slot] = null;
+    this.sendInventory(p);
   }
 
   private move(p: ServerPlayer, from: SlotRef, to: SlotRef, qty?: number): void {
@@ -200,8 +213,10 @@ export class InventorySystem {
    */
   dropDeathBag(p: ServerPlayer, now: number): boolean {
     this.containers.close(p);
-    const items = p.inventory.slots.filter(Boolean);
+    const eq = p.inventory.equipment;
+    const items = [...p.inventory.slots.filter(Boolean), eq?.head ?? null, eq?.body ?? null].filter(Boolean);
     p.inventory.slots = p.inventory.slots.map(() => null);
+    p.inventory.equipment = { head: null, body: null };
     if (items.length === 0) return false;
     const slots: Slots = Array.from({ length: Math.max(INVENTORY.containerSlots.loot_bag, items.length) }, (_, i) => items[i] ?? null);
     const id = randomUUID().slice(0, 12);

@@ -14,8 +14,11 @@ export type ClipName = 'idle' | 'walk' | 'run' | 'attack' | 'death' | 'hit' | 'c
 export interface ModelEntry {
   /** Path under public/ (e.g. "models/zombie/scene.gltf" or "models/zombie/Zombie.fbx"). */
   model: string;
-  /** Optional separate animation files (Mixamo exports one FBX per animation). */
-  animations?: Partial<Record<ClipName, string>>;
+  /**
+   * Optional separate animation files (Mixamo exports one FBX per animation). A list gives
+   * variants: each character instance picks one (e.g. different attacks / deaths).
+   */
+  animations?: Partial<Record<ClipName, string | string[]>>;
   /** Explicit clip names inside the model, if auto-matching picks the wrong ones. */
   clips?: Partial<Record<ClipName, string>>;
   /** Target height in metres (model is scaled to it). Default 1.8. */
@@ -50,6 +53,8 @@ interface Template {
   entry: ModelEntry;
   scene: THREE.Object3D;
   clips: Partial<Record<ClipName, THREE.AnimationClip>>;
+  /** Extra variants per role from animation file lists (index 0 is clips[role]). */
+  variants: Partial<Record<ClipName, THREE.AnimationClip[]>>;
   scale: number;
   yOffset: number;
 }
@@ -117,18 +122,24 @@ export class ModelLibrary {
     }
     const build = async (entry: ModelEntry): Promise<Template | null> => {
       try {
-        const base = await loadAny(entry.model);
+        const base = await loadAny(encodeURI(entry.model));
         const all = [...base.animations];
-        for (const [name, url] of Object.entries(entry.animations ?? {})) {
-          if (!url) continue;
-          const a = await loadAny(url);
-          const clip = a.animations[0];
-          if (clip) {
-            clip.name = name; // explicit file -> explicit role
-            all.push(clip);
-          }
-        }
+        const variants: Partial<Record<ClipName, THREE.AnimationClip[]>> = {};
+        const files = Object.entries(entry.animations ?? {}) as [ClipName, string | string[] | undefined][];
+        await Promise.all(
+          files.map(async ([name, urls]) => {
+            const list = (Array.isArray(urls) ? urls : urls ? [urls] : []).map((u) => encodeURI(u));
+            const loaded = await Promise.all(list.map((u) => loadAny(u).then((a) => a.animations[0] ?? null).catch((err) => (console.warn('[models] animation failed', u, err), null))));
+            const clips = loaded.filter((c): c is THREE.AnimationClip => !!c);
+            clips.forEach((c, i) => (c.name = i === 0 ? name : `${name}#${i}`)); // explicit file -> explicit role
+            if (clips.length) {
+              all.push(clips[0]);
+              variants[name] = clips;
+            }
+          }),
+        );
         all.forEach(stripRootMotion);
+        for (const list of Object.values(variants)) list?.forEach(stripRootMotion);
         const clips = pickClips(all, { ...entry, clips: { ...Object.fromEntries(Object.keys(entry.animations ?? {}).map((k) => [k, k])), ...entry.clips } });
         // Normalise size: scale to the target height, feet on the ground.
         base.scene.updateMatrixWorld(true);
@@ -144,7 +155,7 @@ export class ModelLibrary {
           }
         });
         if (entry.credit) lib.credits.push(entry.credit);
-        return { entry, scene: base.scene, clips, scale, yOffset: -box.min.y * scale };
+        return { entry, scene: base.scene, clips, variants, scale, yOffset: -box.min.y * scale };
       } catch (err) {
         console.warn('[models] failed to load', entry.model, err);
         return null;
@@ -161,7 +172,7 @@ export class ModelLibrary {
 
   createZombie(variant: number, typeScale: number): ModelRig | null {
     if (!this.zombies.length) return null;
-    return new ModelRig(this.zombies[variant % this.zombies.length], typeScale, true);
+    return new ModelRig(this.zombies[variant % this.zombies.length], typeScale, true, variant);
   }
 
   createPlayer(): ModelRig | null {
@@ -185,7 +196,7 @@ export class ModelRig {
   private readonly tmp = new THREE.Vector3();
   private readonly fallDir = Math.random() < 0.65 ? -1 : 1;
 
-  constructor(private readonly t: Template, typeScale: number, private readonly zombie: boolean) {
+  constructor(private readonly t: Template, typeScale: number, private readonly zombie: boolean, seed = Math.floor(Math.random() * 1e9)) {
     this.model = cloneSkinned(t.scene);
     this.model.scale.setScalar(t.scale);
     this.model.position.y = t.yOffset;
@@ -193,7 +204,10 @@ export class ModelRig {
     this.root.add(this.model);
     this.root.scale.setScalar(typeScale);
     this.mixer = new THREE.AnimationMixer(this.model);
-    for (const [name, clip] of Object.entries(t.clips) as [ClipName, THREE.AnimationClip][]) {
+    for (const [name, base] of Object.entries(t.clips) as [ClipName, THREE.AnimationClip][]) {
+      // Pick this instance's variant of the role (stable per seed, different per role).
+      const vs = t.variants[name];
+      const clip = vs && vs.length > 1 ? vs[(((seed + name.length * 7919) * 2654435761) >>> 0) % vs.length] : base;
       const action = this.mixer.clipAction(clip);
       if (name === 'death' || name === 'hit') {
         action.setLoop(THREE.LoopOnce, 1);
@@ -257,7 +271,7 @@ export class ModelRig {
     let state: ClipName;
     if (a.attacking) state = 'attack';
     else if (a.crouch > 0.5) state = speed > 0.3 ? 'crouchWalk' : 'crouch';
-    else if (speed > 3.0) state = 'run';
+    else if (speed > (this.zombie ? 2.2 : 3.0)) state = 'run';
     else if (speed > 0.25) state = 'walk';
     else state = 'idle';
     if ((state === 'crouch' || state === 'crouchWalk') && !this.actions.get(state)) state = speed > 0.3 ? 'walk' : 'idle';

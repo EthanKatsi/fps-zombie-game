@@ -195,6 +195,7 @@ export class Game {
       move: (from: SlotRef, to: SlotRef, qty?: number) => conn.socket.emit('invOp', { op: 'move', from, to, qty }),
       drop: (from: SlotRef, qty?: number) => conn.socket.emit('invOp', { op: 'drop', from, qty }),
       craft: (recipeId: string) => conn.socket.emit('invOp', { op: 'craft', recipeId }),
+      unequip: (slot: 'head' | 'body') => conn.socket.emit('invOp', { op: 'unequip', slot }),
     });
     this.inventoryUI.setInventory(join.inventory);
     this.inventoryUI.setActive(join.inventory.activeHotbar);
@@ -502,7 +503,10 @@ export class Game {
       this.camera.fov += (target - this.camera.fov) * (1 - Math.exp(-dt * 16));
       this.camera.updateProjectionMatrix();
     }
-    this.scoped = this.cameraMode === 'first' && this.weapons.aiming && w.id === 'rifle' && this.camera.fov < (w.adsFov ?? 75) * (this.baseFov / 75) + 6;
+    this.scoped = this.cameraMode === 'first' && this.weapons.aiming && !!w.scope && this.camera.fov < (w.adsFov ?? 75) * (this.baseFov / 75) + 6;
+    // Keep mouse feel constant when zoomed: scale sensitivity with the view's angular size.
+    const zoom = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) / Math.tan(THREE.MathUtils.degToRad(this.baseFov / 2));
+    this.input.sensitivity = BASE_SENSITIVITY * getSettings().sensitivity * Math.min(1, zoom);
     this.combatHud.setScope(this.scoped);
   }
 
@@ -517,6 +521,7 @@ export class Game {
     if (showBody) {
       const inv = this.inventoryUI.inventory;
       this.avatar.setHeld(inv?.slots[this.inventoryUI.activeHotbar]?.defId ?? '');
+      this.avatar.setArmor(!!inv?.equipment?.head, !!inv?.equipment?.body);
       this.avatar.update(this.local.renderFeet, this.input.yaw, this.input.pitch, this.local.state.crouching, this.dead, dt);
     }
     if (this.cameraMode === 'first') return;

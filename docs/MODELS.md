@@ -113,6 +113,17 @@ Zombie variants are assigned by zombie id. Each type keeps its size from
 `shared/src/config/zombies.ts`: bloaters are bigger and runners smaller. Root motion is
 removed automatically, because the server moves the characters.
 
+## Variants and common problems
+
+- An `animations` role can be a **list** of files, e.g.
+  `"attack": ["models/zombie1/zombie attack.fbx", "models/zombie1/zombie biting.fbx"]`. Each zombie picks one,
+  so a crowd doesn't attack in sync.
+- **"FBX version not supported, FileVersion: 6100"**: the file is an old FBX 2011 export, which three.js can't
+  read. In Mixamo, download the character again with Format **FBX Binary (.fbx)** (version 7.x) and
+  **Skin: With Skin**.
+- **Animation files contain no body.** Mixamo animations downloaded "Without Skin" are bones only. You still need
+  one file **With Skin** as `model`. Any Mixamo animation file downloaded with skin works.
+
 ## Checking it worked
 
 Hard-refresh the page. The console should print `[models] 2 zombie model(s), player model: yes`.

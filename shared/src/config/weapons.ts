@@ -26,7 +26,13 @@ const defs: WeaponDef[] = [
     spreadHip: 5.5, spreadAds: 4.0, spreadMoving: 2.0, recoilPitch: 6.5, recoilYaw: 2.0, adsFov: 65, bleedChance: 0.2 },
   { id: 'rifle', kind: 'hitscan', damage: 75, headshotMultiplier: 2.0, fireRate: 0.8, range: 250, noiseRadius: 220,
     ammoType: 'ammo_556', magazineSize: 5, reloadMs: 3000, pellets: 1,
-    spreadHip: 3.5, spreadAds: 0.08, spreadMoving: 4.0, recoilPitch: 5.0, recoilYaw: 1.0, adsFov: 28, bleedChance: 0.5 },
+    spreadHip: 3.5, spreadAds: 0.08, spreadMoving: 4.0, recoilPitch: 5.0, recoilYaw: 1.0, adsFov: 28, bleedChance: 0.5,
+    scope: true },
+  // Bolt-action .308: one-shot headshots on players, useless from the hip or on the move.
+  { id: 'sniper_rifle', kind: 'hitscan', damage: 95, headshotMultiplier: 2.5, fireRate: 0.55, range: 400, noiseRadius: 300,
+    ammoType: 'ammo_308', magazineSize: 5, reloadMs: 3600, pellets: 1,
+    spreadHip: 7.0, spreadAds: 0.02, spreadMoving: 6.0, recoilPitch: 7.5, recoilYaw: 1.2, adsFov: 11, bleedChance: 0.6,
+    scope: true },
   { id: 'assault_rifle', kind: 'hitscan', damage: 22, headshotMultiplier: 2.0, fireRate: 10, range: 150, noiseRadius: 200,
     automatic: true, ammoType: 'ammo_556', magazineSize: 30, reloadMs: 2600, pellets: 1,
     spreadHip: 3.0, spreadAds: 0.6, spreadMoving: 3.5, recoilPitch: 1.3, recoilYaw: 0.9, adsFov: 55, bleedChance: 0.35 },
@@ -58,6 +64,8 @@ export const COMBAT = {
   dummyRespawnSec: 8,
   /** Crossbow bolts that hit the world can be picked up again with this chance. */
   boltRecoverChance: 0.7,
+  /** Armour loses this much durability per point of damage it absorbs. */
+  armorWearPerDamage: 1,
   /** Shots are broadcast to players within this radius (tracers, muzzle flashes, later audio). */
   shotBroadcastRadius: 250,
 } as const;

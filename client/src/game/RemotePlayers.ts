@@ -41,7 +41,7 @@ const makeHeld = (defId: string): THREE.Object3D | null => {
   const ranged = def.category === 'ranged';
   const m = new THREE.MeshStandardMaterial({ color: ranged ? 0x2b2e31 : color, roughness: 0.6, metalness: ranged ? 0.5 : 0 });
   let geo: THREE.BufferGeometry;
-  if (ranged) geo = new THREE.BoxGeometry(0.06, 0.09, defId === 'pistol' ? 0.22 : 0.75);
+  if (ranged) geo = new THREE.BoxGeometry(0.06, 0.09, defId === 'pistol' ? 0.22 : defId === 'sniper_rifle' ? 1.1 : 0.75);
   else if (def.category === 'melee') geo = new THREE.BoxGeometry(0.05, 0.05, 0.7);
   else geo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
   const mesh = new THREE.Mesh(geo, m);
@@ -130,6 +130,7 @@ class RemotePlayer {
       crouch: (n.f & PlayerFlags.crouching) !== 0,
     });
     this.setHeld(n.h ?? '');
+    this.body.setArmor?.((n.f & PlayerFlags.helmet) !== 0, (n.f & PlayerFlags.vest) !== 0);
     if (this.hits >= 0 && n.hc !== this.hits) this.body.hit();
     this.hits = n.hc;
     if (this.buffer.length > 40) this.buffer.splice(0, this.buffer.length - 40);
@@ -222,6 +223,10 @@ export class LocalAvatar {
     this.hand.position.set(0.18, 1.3, -0.3);
     this.root.add(this.hand);
     this.root.visible = false;
+  }
+
+  setArmor(helmet: boolean, vest: boolean): void {
+    this.body.setArmor?.(helmet, vest);
   }
 
   setHeld(defId: string): void {

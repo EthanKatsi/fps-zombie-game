@@ -102,7 +102,7 @@ export class WeaponController {
     input.aimActive = this.aiming;
 
     // Left mouse: consumables are used, weapons/fists attack. Melee repeats while held.
-    if (def?.consume) {
+    if (def?.consume || def?.armor) {
       if (input.consumePress('Mouse0') && !usingItem) this.d.useItem(slot);
     } else {
       const pressed = input.consumePress('Mouse0');

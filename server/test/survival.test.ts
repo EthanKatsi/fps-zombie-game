@@ -192,3 +192,47 @@ test('a long fall hurts and makes you bleed; a short drop does not', async () =>
   assert.ok(p.record.stats.health < SURVIVAL.health.max - 20, `health ${p.record.stats.health}`);
   assert.equal(p.record.stats.bleeding, true, 'bad falls cause bleeding');
 });
+
+test('armour: equip by using it, absorbs its zone, wears out, unequips, drops in the death bag', async () => {
+  const { c, join } = await connect('armoured');
+  const p = game.players.get(join.playerId)!;
+  p.protectedUntil = 0;
+  p.inventory.slots[4] = { uid: makeUid(), defId: 'vest_police', qty: 1, durability: 160 };
+  p.inventory.slots[5] = { uid: makeUid(), defId: 'helmet_combat', qty: 1, durability: 10 };
+  c.emit('invOp', { op: 'use', slot: 4 });
+  assert.ok(await next(c, 'useStarted'));
+  assert.deepEqual(await next(c, 'useEnded', 5000), { completed: true });
+  c.emit('invOp', { op: 'use', slot: 5 });
+  assert.deepEqual(await next(c, 'useEnded', 5000), { completed: true });
+  assert.equal(p.inventory.equipment?.body?.defId, 'vest_police');
+  assert.equal(p.inventory.equipment?.head?.defId, 'helmet_combat');
+  assert.equal(p.inventory.slots[4], null);
+
+  // Body hit from a zombie: vest takes 30%.
+  p.record.stats.health = 100;
+  game.survival.damage(p, 20, 'zombie');
+  assert.ok(Math.abs(p.record.stats.health - 86) < 0.01, `vest absorbed: ${p.record.stats.health}`);
+  assert.ok(p.inventory.equipment!.body!.durability! < 160, 'vest wore down');
+  // Starvation ignores armour.
+  game.survival.damage(p, 10, 'starvation', null, true);
+  assert.ok(Math.abs(p.record.stats.health - 76) < 0.01);
+  // Headshot: helmet halves it and, with 10 durability left, breaks.
+  const broke = next(c, 'notice', 2000, (m) => /broke/.test(m.text));
+  game.survival.damage(p, 40, 'player', p, false, undefined, { headshot: true });
+  assert.ok(Math.abs(p.record.stats.health - 56) < 0.01, `helmet absorbed: ${p.record.stats.health}`);
+  assert.ok(await broke, 'broken notice');
+  assert.equal(p.inventory.equipment!.head, null);
+
+  // Take the vest off, put it back on, then die: it goes into the bag.
+  c.emit('invOp', { op: 'unequip', slot: 'body' });
+  await sleep(150);
+  assert.equal(p.inventory.equipment!.body, null);
+  const slot = p.inventory.slots.findIndex((s) => s?.defId === 'vest_police');
+  assert.ok(slot >= 0, 'vest back in inventory');
+  c.emit('invOp', { op: 'use', slot });
+  assert.deepEqual(await next(c, 'useEnded', 5000), { completed: true });
+  game.survival.kill(p, 'unknown', null);
+  assert.equal(p.inventory.equipment!.body, null, 'stripped on death');
+  const bag = [...(game as any).items.containers.containers.values()].find((x: any) => x.title === `armoured's Bag`);
+  assert.ok(bag?.slots.some((s: any) => s?.defId === 'vest_police'), 'vest in death bag');
+});
