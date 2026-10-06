@@ -40,6 +40,8 @@ export const normalizeInventory = (inv: Partial<Inventory> | null | undefined): 
     const qty = Math.floor(Number(s.qty));
     if (!(qty > 0)) continue;
     out.slots[i] = { ...s, qty: Math.min(qty, maxStackOf(s.defId)) };
+    // Saves from before weapons lost durability: drop it so old (even broken) weapons work.
+    if (!getItemDef(s.defId)?.maxDurability) delete out.slots[i]!.durability;
   }
   const hb = Math.floor(Number(inv?.activeHotbar));
   out.activeHotbar = hb >= 0 && hb < INVENTORY.hotbarSize ? hb : 0;

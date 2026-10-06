@@ -344,6 +344,24 @@ Everything is generated in code (no downloaded assets):
     rest height, because FBX animations are in cm while the converted glTF is in m.
   - Models are gitignored, so only the loader change is committed.
 
+## Extra: durability only on armour; Yaku zombie model (requested after M7)
+
+- **Durability only on armour** (owner request). Weapons and the flashlight have no `maxDurability`, never
+  wear and never break.
+  - `normalizeInventory` strips leftover `durability` from saved non-armour items, so previously broken weapons
+    work again.
+  - Removed `COMBAT.meleeWearPerHit` and `gunWearPerShot`.
+- **Zombie model**: the owner downloaded Mixamo **Yaku J Ignite**
+  (`client/public/models/zombie1/zombie_model.fbx`, FBX 7.7 with embedded textures).
+  - It was converted with FBX2glTF to `zombie1/zombie.glb`, then the glTF JSON was patched:
+    - hook up the normal map (the converter dropped it);
+    - metallic 0 and roughness 0.85 (the converter made it shiny plastic);
+    - the clothing material set to `MASK` with alpha 1 (it came out fully transparent).
+  - Your animation FBX files drive it.
+  - The X Bot mannequin (`character.glb`) is no longer used.
+  - To redo a conversion: run `FBX2glTF.exe --binary --input x.fbx --output x` from the npm package
+    `fbx2gltf@0.9.7`, then apply the same material fixes.
+
 ## Extra: assault rifle (requested after M7)
 
 - An `assault_rifle` item plus weapon. It's the first **full-auto** weapon (`WeaponDef.automatic`: hold to fire):

@@ -134,11 +134,6 @@ export class WeaponController {
   private tryAttack(w: WeaponDef, held: ItemStack | null, inv: Inventory): void {
     const now = performance.now();
     if (now - this.lastAttackAt < 1000 / w.fireRate || this.reloading) return;
-    if (held?.durability !== undefined && held.durability <= 0) {
-      this.d.toast('It is broken');
-      this.lastAttackAt = now;
-      return;
-    }
     const { local, viewmodel, conn } = this.d;
 
     if (w.kind === 'melee') {

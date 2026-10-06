@@ -7,23 +7,23 @@ import type { ItemDef } from '../types/item';
  */
 const defs: ItemDef[] = [
   // ---- melee
-  { id: 'bat', name: 'Baseball Bat', category: 'melee', weight: 1.0, maxStack: 1, weaponId: 'bat', maxDurability: 100,
+  { id: 'bat', name: 'Baseball Bat', category: 'melee', weight: 1.0, maxStack: 1, weaponId: 'bat',
     description: 'Aluminium. Dented. Reliable.' },
-  { id: 'crowbar', name: 'Crowbar', category: 'melee', weight: 1.5, maxStack: 1, weaponId: 'crowbar', maxDurability: 150,
+  { id: 'crowbar', name: 'Crowbar', category: 'melee', weight: 1.5, maxStack: 1, weaponId: 'crowbar',
     description: 'Opens doors, and heads.' },
-  { id: 'machete', name: 'Machete', category: 'melee', weight: 1.0, maxStack: 1, weaponId: 'machete', maxDurability: 90 },
-  { id: 'axe', name: 'Fire Axe', category: 'melee', weight: 2.2, maxStack: 1, weaponId: 'axe', maxDurability: 120,
+  { id: 'machete', name: 'Machete', category: 'melee', weight: 1.0, maxStack: 1, weaponId: 'machete' },
+  { id: 'axe', name: 'Fire Axe', category: 'melee', weight: 2.2, maxStack: 1, weaponId: 'axe',
     description: 'Heavy and slow. Good against barricades.' },
 
   // ---- ranged
-  { id: 'pistol', name: 'Pistol', category: 'ranged', weight: 1.0, maxStack: 1, weaponId: 'pistol', maxDurability: 200 },
-  { id: 'shotgun', name: 'Pump Shotgun', category: 'ranged', weight: 3.5, maxStack: 1, weaponId: 'shotgun', maxDurability: 150 },
-  { id: 'rifle', name: 'Hunting Rifle', category: 'ranged', weight: 4.0, maxStack: 1, weaponId: 'rifle', maxDurability: 180 },
-  { id: 'assault_rifle', name: 'Assault Rifle', category: 'ranged', weight: 3.6, maxStack: 1, weaponId: 'assault_rifle', maxDurability: 300,
+  { id: 'pistol', name: 'Pistol', category: 'ranged', weight: 1.0, maxStack: 1, weaponId: 'pistol' },
+  { id: 'shotgun', name: 'Pump Shotgun', category: 'ranged', weight: 3.5, maxStack: 1, weaponId: 'shotgun' },
+  { id: 'rifle', name: 'Hunting Rifle', category: 'ranged', weight: 4.0, maxStack: 1, weaponId: 'rifle' },
+  { id: 'assault_rifle', name: 'Assault Rifle', category: 'ranged', weight: 3.6, maxStack: 1, weaponId: 'assault_rifle',
     description: 'Full-auto. Loud enough to wake the whole block.' },
-  { id: 'sniper_rifle', name: 'Sniper Rifle', category: 'ranged', weight: 6.5, maxStack: 1, weaponId: 'sniper_rifle', maxDurability: 150,
+  { id: 'sniper_rifle', name: 'Sniper Rifle', category: 'ranged', weight: 6.5, maxStack: 1, weaponId: 'sniper_rifle',
     description: 'Bolt-action .308 with a high-power scope. Hold right mouse to zoom.' },
-  { id: 'crossbow', name: 'Crossbow', category: 'ranged', weight: 3.0, maxStack: 1, weaponId: 'crossbow', maxDurability: 150,
+  { id: 'crossbow', name: 'Crossbow', category: 'ranged', weight: 3.0, maxStack: 1, weaponId: 'crossbow',
     description: 'Silent. Bolts can be recovered.' },
 
   // ---- armour (use it from the hotbar to put it on; worn pieces show in the inventory)
@@ -72,7 +72,7 @@ const defs: ItemDef[] = [
   { id: 'cloth', name: 'Cloth Rag', category: 'material', weight: 0.1, maxStack: 20 },
 
   // ---- tools & buildables
-  { id: 'flashlight', name: 'Flashlight', category: 'tool', weight: 0.3, maxStack: 1, maxDurability: 100,
+  { id: 'flashlight', name: 'Flashlight', category: 'tool', weight: 0.3, maxStack: 1,
     description: 'Equip it to light the way at night.' },
   { id: 'barricade', name: 'Barricade Kit', category: 'buildable', weight: 4.0, maxStack: 2, structureKind: 'barricade',
     description: 'Planks and nails, ready to board up a doorway.' },

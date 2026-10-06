@@ -23,7 +23,7 @@ export interface LootTable {
 export const LOOT = {
   /** Minutes before a looted container can refill. */
   respawnMinutes: 20,
-  /** Weapons/tools spawn with durability in this fraction range of max. */
+  /** Items with durability (armour) spawn with this fraction range of max. */
   durability: [0.35, 1.0] as [number, number],
   /** Guns spawn with this fraction of a magazine loaded (0 = empty). */
   loadedFraction: [0, 0.6] as [number, number],

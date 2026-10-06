@@ -104,7 +104,7 @@ const attack = (c: C, p: ServerPlayer, dir: [number, number, number], aim = fals
 // Dummy 2 of the test map stands at (0, 0, -14).
 const DUMMY_CHEST = { x: 0, y: 1.0, z: -14 };
 
-test('pistol hits a dummy, uses ammo and wears the gun', async () => {
+test('pistol hits a dummy and uses ammo; guns never wear out', async () => {
   const { c, p } = await connect('shooter');
   p.teleport({ x: 0, y: 0, z: -11 });
   await settle(c);
@@ -115,7 +115,7 @@ test('pistol hits a dummy, uses ammo and wears the gun', async () => {
   assert.deepEqual(await hit, { kind: 'dummy', head: false, kill: false });
   const state = await ws;
   assert.equal(state?.loaded, 11);
-  assert.equal(gun.durability, 99);
+  assert.equal(gun.durability, 100, 'no weapon durability loss');
 });
 
 test('fire rate and shot sequence are enforced', async () => {

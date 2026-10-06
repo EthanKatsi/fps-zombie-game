@@ -56,9 +56,6 @@ export const COMBAT = {
   movingSpeedForFullSpread: 4.2,
   /** Server accepts attacks this fraction of the fire interval early (network jitter). */
   fireRateTolerance: 0.8,
-  /** Durability lost per melee hit / per gunshot. Broken weapons can't be used. */
-  meleeWearPerHit: 1,
-  gunWearPerShot: 1,
   /** Training dummies at the police station shooting range. */
   dummyHealth: 150,
   dummyRespawnSec: 8,

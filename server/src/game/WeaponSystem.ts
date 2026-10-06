@@ -57,8 +57,8 @@ const offsetDir = (yaw: number, pitch: number, dy: number, dp: number): Vec3 => 
 const MELEE_SWEEP: [number, number][] = [[0, 0], [0.11, 0], [-0.11, 0], [0, 0.09], [0, -0.09]];
 
 /**
- * Server-authoritative combat: validates every attack (sequence, fire rate, ammo, stamina,
- * durability), resolves hitscan / melee / projectile hits against players and dummies,
+ * Server-authoritative combat: validates every attack (sequence, fire rate, ammo, stamina),
+ * resolves hitscan / melee / projectile hits against players and dummies,
  * applies damage through the survival system, and broadcasts shots for effects + noise.
  * Lag compensation (rewinding targets to the shooter's view) arrives in milestone 7.
  */
@@ -156,16 +156,6 @@ export class WeaponSystem {
     }
   }
 
-  private wear(p: ServerPlayer, uid: string, amount: number): void {
-    const item = p.inventory.slots.find((s) => s?.uid === uid);
-    if (!item || item.durability === undefined) return;
-    item.durability = Math.max(0, item.durability - amount);
-    if (item.durability === 0) {
-      p.socket.emit('notice', { text: `Your ${getItemDef(item.defId)?.name ?? 'weapon'} broke` });
-      this.items.sendInventory(p);
-    }
-  }
-
   // ------------------------------------------------------------------ requests
 
   /**
@@ -216,7 +206,6 @@ export class WeaponSystem {
     if (def?.consume) return; // food etc. is "used", not swung
     const w = weaponForItem(item?.defId);
     if (c.reload || c.swing) return;
-    if (item?.durability !== undefined && item.durability <= 0) return;
     const interval = 1000 / w.fireRate;
     if (now - c.lastAttackAt < interval * COMBAT.fireRateTolerance) return;
 
@@ -273,8 +262,7 @@ export class WeaponSystem {
       for (const e of dealt.values()) this.hit(p, e.target, e.dmg, e.head, w, now);
       this.broadcastShot(p, w.id, eye, ends);
     }
-    this.wear(p, item.uid, COMBAT.gunWearPerShot);
-    p.socket.emit('weaponState', { uid: item.uid, loaded: item.loadedAmmo ?? 0, durability: item.durability });
+    p.socket.emit('weaponState', { uid: item.uid, loaded: item.loadedAmmo ?? 0 });
   }
 
   reload(p: ServerPlayer): void {
@@ -331,7 +319,6 @@ export class WeaponSystem {
     const ends: ShotEnd[] = [];
     if (landed && landedDir) {
       this.hit(p, landed.target!, w.damage * this.mult(landed.target!, landed.head, w), landed.head, w, now);
-      if (s.uid) this.wear(p, s.uid, COMBAT.meleeWearPerHit);
       ends.push([...v3(add(eye, landedDir, landed.t)), 2]);
     } else if (worldEnd) {
       ends.push([...v3(worldEnd), 1]);

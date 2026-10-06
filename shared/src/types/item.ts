@@ -42,7 +42,7 @@ export interface ItemDef {
   weaponId?: string;
   /** Buildables reference a StructureDef kind (config/structures.ts). */
   structureKind?: string;
-  /** Items with durability start at this value. */
+  /** Only armour has durability (owner: no durability on anything else). */
   maxDurability?: number;
   /**
    * Wearable armour: "use" it to put it on. Absorbs `reduction` (0-1) of player/zombie damage
