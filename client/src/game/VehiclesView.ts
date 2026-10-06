@@ -215,6 +215,8 @@ class VehicleMesh {
 export class VehiclesView {
   private readonly vehicles = new Map<number, VehicleMesh>();
   readonly byHandle = new Map<number, number>();
+  /** Colliders were added or removed: the world must be stepped before queries can see them. */
+  private dirty = false;
 
   constructor(
     private readonly R: Rapier,
@@ -232,6 +234,7 @@ export class VehiclesView {
         this.vehicles.set(n.id, v);
         this.byHandle.set(v.collider.handle, n.id);
         this.scene.add(v.built.root);
+        this.dirty = true;
       }
       v.push(n, serverTime);
     }
@@ -241,6 +244,7 @@ export class VehiclesView {
       this.byHandle.delete(v.collider.handle);
       this.world.removeCollider(v.collider, false);
       this.vehicles.delete(id);
+      this.dirty = true;
     }
   }
 
@@ -251,7 +255,8 @@ export class VehiclesView {
    */
   interpolate(serverNow: number, drivenId: number | null): boolean {
     const t = serverNow - NETWORK.interpolationDelayMs;
-    let moved = false;
+    let moved = this.dirty;
+    this.dirty = false;
     for (const v of this.vehicles.values()) {
       if (v.id === drivenId) continue;
       if (v.interpolate(t)) {
