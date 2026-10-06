@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type http from 'node:http';
 import {
+  SURVIVAL,
   ZOMBIE_TYPE_ORDER,
   doorPose,
   getItemDef,
@@ -30,7 +31,8 @@ import type { PlayerRepository } from './db/PlayerRepository';
  * Offline players are moved in the database and appear there on their next join.
  *
  *   POST /admin/zombies  {"username":"kats","count":5,"type":"runner"}  spawns zombies 8-16 m away
- *   POST /admin/give     {"username":"kats","item":"assault_rifle","qty":1}  (online players; ignores weight)
+ *   POST /admin/give     {"username":"kats","item":"assault_rifle","qty":1}  (online or offline; ignores weight)
+ *   POST /admin/heal     {"username":"kats"}  full health, stops bleeding (online or offline)
  */
 export const createAdmin = (dataDir: string, game: GameServer, repo: PlayerRepository) => {
   const token = randomBytes(16).toString('hex');
@@ -160,6 +162,20 @@ export const createAdmin = (dataDir: string, game: GameServer, repo: PlayerRepos
       }
       console.log(`[admin] gave ${given}x ${def.id} to ${p?.username ?? rec!.username}${p ? '' : ' (offline)'}`);
       return json(res, 200, { ok: true, given, requested: qty, online: !!p }), true;
+    }
+
+    if (url === '/admin/heal' && req.method === 'POST') {
+      const body = await readBody(req);
+      const p = body && [...game.players.values()].find((x) => x.username.toLowerCase() === String(body.username).toLowerCase());
+      const rec = p ? p.record : body && typeof body.username === 'string' ? await repo.findByUsername(body.username) : null;
+      if (!rec) return json(res, 404, { error: 'no such player' }), true;
+      if (p && !p.alive) return json(res, 409, { error: 'player is dead; respawn first' }), true;
+      rec.stats.health = SURVIVAL.health.max;
+      rec.stats.bleeding = false;
+      if (p) game.survival.sendStats(p, true);
+      else await repo.save(rec);
+      console.log(`[admin] healed ${rec.username}${p ? '' : ' (offline)'}`);
+      return json(res, 200, { ok: true, online: !!p, health: rec.stats.health, bleeding: false }), true;
     }
 
     json(res, 404, { error: 'unknown admin route' });
