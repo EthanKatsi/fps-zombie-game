@@ -56,8 +56,7 @@ export class GameServer {
   readonly clock = new WorldClock();
   /** Created by enableZombies() once the navmesh is ready. */
   zombies: ZombieSystem | null = null;
-  private doorsDirty = false;
-  private lastVehicleStep = 0;
+
   /** Door id -> time (ms) until which it can't be toggled again (swing animation). */
   private readonly doorBusyUntil = new Map<number, number>();
   readonly players = new Map<string, ServerPlayer>();
@@ -234,6 +233,7 @@ export class GameServer {
         record.yaw = yawTowardCenter(spawn);
       }
       const player = new ServerPlayer(this.R, this.world, socket, record, spawn);
+      player.motor.obstacles = () => this.vehicles.boxes(null);
       // Died and left before respawning: start a fresh life.
       if (record.stats.health <= 0) this.survival.reviveAt(player, this.spawnPoint());
       this.players.set(player.id, player);
@@ -327,7 +327,6 @@ export class GameServer {
       dir = choice;
     }
     this.doors.set(id, !open, dir);
-    this.doorsDirty = true;
     this.doorBusyUntil.set(id, now + 450);
     this.io.emit('doorChanged', { id, open: !open, dir });
   }
@@ -345,12 +344,18 @@ export class GameServer {
 
   // ---------------------------------------------------------------- simulation
 
+  /** Recent tick durations (ms) for /admin/stats. */
+  readonly tickTimes: number[] = [];
+
   private step(): void {
+    const t0 = performance.now();
+    this.stepInner();
+    this.tickTimes.push(performance.now() - t0);
+    if (this.tickTimes.length > 150) this.tickTimes.shift();
+  }
+
+  private stepInner(): void {
     this.tick++;
-    if (this.doorsDirty) {
-      this.world.step(); // refresh the broad-phase so moved door colliders are seen
-      this.doorsDirty = false;
-    }
     const st = this.serverTime();
     for (const p of this.players.values()) {
       p.simulate(
@@ -369,13 +374,6 @@ export class GameServer {
       }
     }
     this.vehicles.update(performance.now(), TICK_DT);
-    // Stepping the world refreshes scene queries for moved vehicle colliders, but costs ~7 ms on the
-    // big map, so do it at most twice a second (moving obstacles are slightly stale in between).
-    if (this.vehicles.moved && performance.now() - this.lastVehicleStep > 500) {
-      this.world.step();
-      this.vehicles.moved = false;
-      this.lastVehicleStep = performance.now();
-    }
 
     const now = performance.now();
     this.survival.update(this.players.values(), TICK_DT, now);

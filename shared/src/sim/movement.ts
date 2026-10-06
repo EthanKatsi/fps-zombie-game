@@ -6,6 +6,7 @@ import { COMBAT } from '../config/weapons';
 import { clamp, degToRad } from '../math/math';
 import type { Vec3 } from '../types/common';
 import { PLAYER_GROUPS } from './collision';
+import { pushOutOfBox, type ObstacleBox } from './vehicle';
 
 export type Rapier = typeof RAPIER_NS;
 
@@ -104,6 +105,8 @@ export const sanitizeInput = (i: MoveInput): MoveInput | null => {
 export class CharacterMotor {
   readonly collider: Collider;
   private readonly controller: KinematicCharacterController;
+  /** Vehicles to bump into (not part of the physics world, see sim/vehicle.ts). */
+  obstacles: () => ObstacleBox[] = () => [];
 
   constructor(
     private readonly R: Rapier,
@@ -257,6 +260,17 @@ export class CharacterMotor {
       y: c.y + mv.y - bodyHeight(s.crouching) / 2,
       z: c.z + mv.z,
     };
+    // Vehicles: slide around them like walls.
+    for (const o of this.obstacles()) {
+      if (Math.abs(o.x - s.pos.x) > 6 || Math.abs(o.z - s.pos.z) > 6) continue;
+      if (s.pos.y + bodyHeight(s.crouching) < o.y0 || s.pos.y > o.y1 - 0.1) continue;
+      const hit = pushOutOfBox(o, s.pos.x, s.pos.z, MOVEMENT.radius);
+      if (!hit) continue;
+      s.pos = { x: s.pos.x + hit.dx, y: s.pos.y, z: s.pos.z + hit.dz };
+      const into = s.vel.x * hit.nx + s.vel.z * hit.nz;
+      if (into < 0) s.vel = { x: s.vel.x - into * hit.nx, y: s.vel.y, z: s.vel.z - into * hit.nz };
+      this.syncCollider(s);
+    }
     return s;
   }
 

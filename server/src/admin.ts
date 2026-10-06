@@ -164,6 +164,19 @@ export const createAdmin = (dataDir: string, game: GameServer, repo: PlayerRepos
       return json(res, 200, { ok: true, given, requested: qty, online: !!p }), true;
     }
 
+    if (url === '/admin/stats' && req.method === 'GET') {
+      const t = game.tickTimes;
+      const avg = t.reduce((a, b) => a + b, 0) / Math.max(1, t.length);
+      return json(res, 200, {
+        players: game.players.size,
+        zombies: game.zombies?.count ?? 0,
+        tickMsAvg: Math.round(avg * 100) / 100,
+        tickMsMax: Math.round(Math.max(0, ...t) * 100) / 100,
+        over20ms: t.filter((x) => x > 20).length,
+        samples: t.length,
+      }), true;
+    }
+
     if (url === '/admin/heal' && req.method === 'POST') {
       const body = await readBody(req);
       const p = body && [...game.players.values()].find((x) => x.username.toLowerCase() === String(body.username).toLowerCase());

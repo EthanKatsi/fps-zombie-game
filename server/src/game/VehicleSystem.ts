@@ -13,7 +13,10 @@ import {
   createVehicleState,
   seatFeet,
   vehicleAxes,
+  vehicleBox,
+  pushOutOfBox,
   type DriveInfo,
+  type ObstacleBox,
   type MapData,
   type MoveInput,
   type NetVehicle,
@@ -77,8 +80,6 @@ export class ServerVehicle {
  */
 export class VehicleSystem {
   readonly vehicles: ServerVehicle[];
-  /** Something moved this tick: the world must be stepped so queries see the new positions. */
-  moved = false;
 
   constructor(
     private readonly R: Rapier,
@@ -91,6 +92,14 @@ export class VehicleSystem {
     private readonly items: InventorySystem,
   ) {
     this.vehicles = map.vehicleSpawns.map((s, i) => new ServerVehicle(R, world, i, s.type, s));
+    for (const v of this.vehicles) v.motor.obstacles = () => this.boxes(v.id);
+  }
+
+  /** Vehicle footprints for push-out collisions (optionally leaving one out). */
+  boxes(except: number | null): ObstacleBox[] {
+    const out: ObstacleBox[] = [];
+    for (const v of this.vehicles) if (v.id !== except) out.push(vehicleBox(v.id, v.type, v.state));
+    return out;
   }
 
   seatOf(p: ServerPlayer): { v: ServerVehicle; seat: number } | null {
@@ -155,7 +164,9 @@ export class VehicleSystem {
         PLAYER_GROUPS,
         p.motor.collider,
       );
-      if (hit === null) return pos;
+      // Not inside another vehicle either.
+      const inCar = this.boxes(null).some((b) => pos.y < b.y1 && pushOutOfBox(b, pos.x, pos.z, MOVEMENT.radius));
+      if (hit === null && !inCar) return pos;
     }
     return null;
   }
@@ -176,7 +187,6 @@ export class VehicleSystem {
       const res = v.motor.step(v.state, input, dt);
       v.state = res.state;
       v.driven = true;
-      this.moved = true;
       if (res.impact > 0) this.crash(v, res.impact);
     }
     this.placeOccupant(v, seat, p, input.yaw, input.pitch);
@@ -191,8 +201,7 @@ export class VehicleSystem {
       if (!v.driver && (Math.abs(v.state.speed) > 0.02 || !v.state.grounded)) {
         const res = v.motor.step(v.state, null, dt);
         v.state = res.state;
-        this.moved = true;
-        if (res.impact > 0) this.crash(v, res.impact);
+          if (res.impact > 0) this.crash(v, res.impact);
       }
       v.driven = false;
       // Passengers ride along even when no input of theirs arrived this tick.
@@ -238,7 +247,6 @@ export class VehicleSystem {
     v.motor.sync(v.state);
     v.health = v.def.health;
     v.wrecked = false;
-    this.moved = true;
   }
 
   /** Is a point inside the vehicle's footprint (plus a margin)? */

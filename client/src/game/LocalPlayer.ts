@@ -15,6 +15,7 @@ import {
   type DriveInfo,
   type MoveInput,
   type MoveState,
+  type ObstacleBox,
   type Rapier,
   type VehicleState,
   type VehicleType,
@@ -64,6 +65,7 @@ export class LocalPlayer {
   renderVehicle: VehicleState | null = null;
   /** Hooks into the vehicles view (set by Game). */
   vehicleCollider: (id: number) => Collider | undefined = () => undefined;
+  vehicleObstacles: (except: number) => ObstacleBox[] = () => [];
   vehiclePose: (id: number) => VehicleState | undefined = () => undefined;
 
   constructor(
@@ -129,6 +131,7 @@ export class LocalPlayer {
       r?.motor?.dispose();
       const collider = drive.seat === 0 ? this.vehicleCollider(drive.id) : undefined;
       const motor = collider ? new VehicleMotor(this.R, this.world, drive.type, collider) : null;
+      if (motor) motor.obstacles = () => this.vehicleObstacles(drive.id);
       this.ride = { id: drive.id, type: drive.type, seat: drive.seat, motor, state: cloneVehicleState(drive.state), prev: cloneVehicleState(drive.state) };
       motor?.sync(drive.state);
       this.state = cloneMoveState(server);

@@ -39,6 +39,16 @@ requirements plus later changes), `docs/ARCHITECTURE.md` (design), `docs/MODELS.
 - Browser automation (Claude in Chrome) runs in a hidden window where requestAnimationFrame is throttled.
   Use the dev-only `window.__game` handle to inspect state. Don't call `__game.frame()` in a loop: it multiplies rAF chains and freezes the tab.
 
+## Physics performance (important)
+- **Never call `world.step()` during play.** On the big map it costs ~8 ms on the server and ~22 ms in the browser
+  (a visible hitch). Rapier only sees moved, added or enabled colliders after a step, so:
+  - doors have one collider per pose and switch with collision groups (`DoorColliders.set`), which queries see
+    immediately;
+  - vehicles are invisible to queries (`VEHICLE_GROUPS` filter 0). Players and vehicles collide with them via
+    `pushOutOfBox` (obstacle providers on `CharacterMotor` / `VehicleMotor`). The "Drive" prompt is a ray-box
+    test in `VehiclesView.pick`.
+- The only steps are at startup, after building the map colliders.
+
 ## Git
 - The repo is the project folder (`main` branch). Commit messages end with the Co-Authored-By line the
   harness provides.

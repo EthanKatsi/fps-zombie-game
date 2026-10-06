@@ -51,6 +51,58 @@ const body = (d: VehicleDef) => {
   return { hx: d.size[0] / 2, hy, hz: d.size[2] / 2, cy: LIFT + hy };
 };
 
+/** A vehicle's footprint for push-out collisions (players and other vehicles). */
+export interface ObstacleBox {
+  id: number;
+  x: number;
+  z: number;
+  yaw: number;
+  hx: number;
+  hz: number;
+  /** Vertical extent (world y). */
+  y0: number;
+  y1: number;
+}
+
+export const vehicleBox = (id: number, type: VehicleType, s: VehicleState): ObstacleBox => {
+  const d = VEHICLES[type];
+  return { id, x: s.pos.x, z: s.pos.z, yaw: s.yaw, hx: d.size[0] / 2, hz: d.size[2] / 2, y0: s.pos.y, y1: s.pos.y + d.clearance + d.size[1] };
+};
+
+/**
+ * Push a circle (x, z, radius r) out of a box in the XZ plane. Returns the correction and the
+ * outward normal, or null if they don't overlap.
+ */
+export const pushOutOfBox = (b: ObstacleBox, px: number, pz: number, r: number): { dx: number; dz: number; nx: number; nz: number } | null => {
+  const { fx, fz, rx, rz } = vehicleAxes(b.yaw);
+  const ox = px - b.x, oz = pz - b.z;
+  const lx = ox * rx + oz * rz, lz = ox * fx + oz * fz;
+  const cx = clamp(lx, -b.hx, b.hx), cz = clamp(lz, -b.hz, b.hz);
+  const ex = lx - cx, ez = lz - cz;
+  const d = Math.hypot(ex, ez);
+  if (d >= r) return null;
+  let nlx: number, nlz: number, pen: number;
+  if (d > 1e-6) {
+    nlx = ex / d;
+    nlz = ez / d;
+    pen = r - d;
+  } else {
+    // Centre inside the box: leave by the nearest side.
+    const sx = b.hx - Math.abs(lx), sz = b.hz - Math.abs(lz);
+    if (sx < sz) {
+      nlx = lx >= 0 ? 1 : -1;
+      nlz = 0;
+      pen = sx + r;
+    } else {
+      nlx = 0;
+      nlz = lz >= 0 ? 1 : -1;
+      pen = sz + r;
+    }
+  }
+  const nx = nlx * rx + nlz * fx, nz = nlx * rz + nlz * fz;
+  return { dx: nx * pen, dz: nz * pen, nx, nz };
+};
+
 /** Player feet sit this far below the seat (hip) point; seated players use crouch hitboxes. */
 export const SEAT_HIP = 0.5;
 
@@ -100,6 +152,8 @@ export class VehicleMotor {
   private readonly controller: KinematicCharacterController;
   private readonly def: VehicleDef;
   private readonly probe: InstanceType<Rapier['Cuboid']>;
+  /** Other vehicles to bump into (set by the owner; must not include this vehicle). */
+  obstacles: () => ObstacleBox[] = () => [];
 
   constructor(
     private readonly R: Rapier,
@@ -197,7 +251,7 @@ export class VehicleMotor {
     this.collider.setTranslation({ x: s.pos.x, y: s.pos.y + b.cy, z: s.pos.z });
     this.controller.computeColliderMovement(this.collider, want, this.R.QueryFilterFlags.EXCLUDE_SENSORS, VEHICLE_MOVE_GROUPS);
     const mv = this.controller.computedMovement();
-    const nx = s.pos.x + mv.x, nz = s.pos.z + mv.z;
+    let nx = s.pos.x + mv.x, nz = s.pos.z + mv.z;
     let impact = 0;
     if (this.controller.numComputedCollisions() > 0 && Math.abs(s.speed) > 0.3) {
       // Hit something: keep only the speed we actually made along our heading.
@@ -205,6 +259,22 @@ export class VehicleMotor {
       const kept = s.speed > 0 ? clamp(achieved, 0, s.speed) : clamp(achieved, s.speed, 0);
       impact = Math.abs(s.speed - kept);
       s.speed = kept;
+    }
+    // Other vehicles: three circles along our length pushed out of their boxes.
+    const r = d.size[0] / 2;
+    for (const o of this.obstacles()) {
+      if (Math.abs(o.x - nx) > 8 || Math.abs(o.z - nz) > 8 || o.y1 < s.pos.y || o.y0 > s.pos.y + d.size[1]) continue;
+      for (const off of [d.size[2] / 2 - r, 0, -(d.size[2] / 2 - r)]) {
+        const hit = pushOutOfBox(o, nx + fx * off, nz + fz * off, r);
+        if (!hit) continue;
+        nx += hit.dx;
+        nz += hit.dz;
+        const into = -(fx * hit.nx + fz * hit.nz) * s.speed;
+        if (into > 0) {
+          impact = Math.max(impact, into);
+          s.speed -= Math.sign(s.speed) * into * Math.abs(fx * hit.nx + fz * hit.nz);
+        }
+      }
     }
 
     // ---- vertical: ride on the highest ground under the wheels, or fall

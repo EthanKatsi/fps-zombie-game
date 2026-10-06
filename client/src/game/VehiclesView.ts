@@ -9,6 +9,8 @@ import {
   lerpAngle,
   placeVehicleCollider,
   seatFeet,
+  vehicleBox,
+  type ObstacleBox,
   type NetVehicle,
   type Rapier,
   type Vec3,
@@ -215,8 +217,6 @@ class VehicleMesh {
 export class VehiclesView {
   private readonly vehicles = new Map<number, VehicleMesh>();
   readonly byHandle = new Map<number, number>();
-  /** Colliders were added or removed: the world must be stepped before queries can see them. */
-  private dirty = false;
 
   constructor(
     private readonly R: Rapier,
@@ -234,7 +234,6 @@ export class VehiclesView {
         this.vehicles.set(n.id, v);
         this.byHandle.set(v.collider.handle, n.id);
         this.scene.add(v.built.root);
-        this.dirty = true;
       }
       v.push(n, serverTime);
     }
@@ -244,27 +243,51 @@ export class VehiclesView {
       this.byHandle.delete(v.collider.handle);
       this.world.removeCollider(v.collider, false);
       this.vehicles.delete(id);
-      this.dirty = true;
     }
   }
 
   /**
-   * Interpolate vehicles and move their colliders, except `drivenId` (the vehicle the local player
-   * drives: its pose and collider come from the prediction). Returns true if any collider moved
-   * (the caller steps the world so queries see it).
+   * Interpolate vehicles, except `drivenId` (the vehicle the local player drives: its pose and
+   * collider come from the prediction).
    */
-  interpolate(serverNow: number, drivenId: number | null): boolean {
+  interpolate(serverNow: number, drivenId: number | null): void {
     const t = serverNow - NETWORK.interpolationDelayMs;
-    let moved = this.dirty;
-    this.dirty = false;
     for (const v of this.vehicles.values()) {
       if (v.id === drivenId) continue;
-      if (v.interpolate(t)) {
-        placeVehicleCollider(v.collider, v.type, v.pose);
-        moved = true;
+      if (v.interpolate(t)) placeVehicleCollider(v.collider, v.type, v.pose);
+    }
+  }
+
+  /** Footprints of the vehicles we know about, for push-out collisions. */
+  boxes(except: number | null): ObstacleBox[] {
+    const out: ObstacleBox[] = [];
+    for (const v of this.vehicles.values()) if (v.id !== except) out.push(vehicleBox(v.id, v.type, v.pose));
+    return out;
+  }
+
+  /** Ray vs vehicle boxes (the "Drive" prompt): nearest vehicle hit within maxT, or null. */
+  pick(o: { x: number; y: number; z: number }, d: { x: number; y: number; z: number }, maxT: number): { id: number; t: number } | null {
+    let best: { id: number; t: number } | null = null;
+    for (const b of this.boxes(null)) {
+      // Into the box's frame (x across, z along, y up).
+      const c = Math.cos(b.yaw), s = Math.sin(b.yaw);
+      const ox = o.x - b.x, oz = o.z - b.z;
+      const lo = { x: ox * c - oz * s, y: o.y, z: -(ox * s + oz * c) };
+      const ld = { x: d.x * c - d.z * s, y: d.y, z: -(d.x * s + d.z * c) };
+      let t0 = 0, t1 = maxT;
+      const slab = (p: number, v: number, lo_: number, hi: number) => {
+        if (Math.abs(v) < 1e-9) return p >= lo_ && p <= hi;
+        let a = (lo_ - p) / v, bb = (hi - p) / v;
+        if (a > bb) [a, bb] = [bb, a];
+        t0 = Math.max(t0, a);
+        t1 = Math.min(t1, bb);
+        return t0 <= t1;
+      };
+      if (slab(lo.x, ld.x, -b.hx, b.hx) && slab(lo.z, ld.z, -b.hz, b.hz) && slab(lo.y, ld.y, b.y0, b.y1)) {
+        if (!best || t0 < best.t) best = { id: b.id, t: t0 };
       }
     }
-    return moved;
+    return best;
   }
 
   /** Draw every vehicle; `local` overrides the pose of the one we're driving. */

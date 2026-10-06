@@ -115,9 +115,7 @@ export class Game {
   private mouseIdle = 0;
   private camYawSet = 0;
   private readonly vehicleHud = document.getElementById('vehicle-hud');
-  /** Vehicle colliders moved / appeared: step the prediction world soon (it's expensive). */
-  private vehicleStepPending = false;
-  private lastVehicleStep = 0;
+
   private dead = false;
   private readonly tmpV = new THREE.Vector3();
   private lastLook = { yaw: 0, pitch: 0 };
@@ -225,6 +223,8 @@ export class Game {
     this.input.onLockChange = (locked) => this.ui.setPaused(!locked && !this.inventoryUI.isOpen && !this.dead);
     this.local = new LocalPlayer(R, this.world, join.state, this.input);
     this.local.vehicleCollider = (id) => this.vehicles.collider(id);
+    this.local.vehicleObstacles = (except) => this.vehicles.boxes(except);
+    this.local.motor.obstacles = () => this.vehicles.boxes(null);
     this.local.vehiclePose = (id) => this.vehicles.pose(id);
     this.remotes = new RemotePlayers(this.scene, join.playerId, models);
     for (const p of join.players) this.remotes.setName(p.id, p.username);
@@ -269,7 +269,6 @@ export class Game {
     });
     s.on('doorChanged', ({ id, open: isOpen, dir }) => {
       this.doorColliders.set(id, isOpen, dir ?? 1);
-      this.world.step(); // keep the prediction world's scene queries in sync
       this.doorRenderer.setOpen(id, isOpen, dir ?? 1);
     });
     s.on('inventory', (inv) => this.inventoryUI.setInventory(inv));
@@ -470,13 +469,7 @@ export class Game {
 
     // Vehicles: remote ones interpolate (their colliders move -> refresh queries), ours is predicted.
     const ride = this.local.ride;
-    if (this.vehicles.interpolate(this.conn.serverNow(), ride?.motor ? ride.id : null)) this.vehicleStepPending = true;
-    // world.step costs several ms on the big map: refresh queries for moved vehicles a few times a second.
-    if (this.vehicleStepPending && now - this.lastVehicleStep > 300) {
-      this.world.step();
-      this.vehicleStepPending = false;
-      this.lastVehicleStep = now;
-    }
+    this.vehicles.interpolate(this.conn.serverNow(), ride?.motor ? ride.id : null);
     this.local.updateCamera(this.camera, this.accumulator / TICK_DT, dt);
     this.vehicles.render(dt, ride?.motor && this.local.renderVehicle ? { id: ride.id, state: this.local.renderVehicle } : null);
     this.updateRideMode();
@@ -700,8 +693,11 @@ export class Game {
     this.aimRay(o, d);
     const range = INVENTORY.useRange;
     const ray = new this.R.Ray({ x: o.x, y: o.y, z: o.z }, { x: d.x, y: d.y, z: d.z });
-    const hit = this.world.castRay(ray, range, true, undefined, PLAYER_GROUPS, this.local.motor.collider);
-    const hitDist = hit ? hit.timeOfImpact : range;
+    const worldHit = this.world.castRay(ray, range, true, undefined, PLAYER_GROUPS, this.local.motor.collider);
+    // Vehicles aren't in the physics world: test their boxes directly.
+    const car = this.vehicles.pick(o, d, worldHit ? worldHit.timeOfImpact : range);
+    const hit = car ? null : worldHit;
+    const hitDist = car ? car.t : hit ? hit.timeOfImpact : range;
 
     let prompt: string | null = null;
     this.target = null;
@@ -714,9 +710,9 @@ export class Game {
         const name = getItemDef(item.item.defId)?.name ?? item.item.defId;
         prompt = `Pick up ${name}${item.item.qty > 1 ? ` ×${item.item.qty}` : ''}`;
       }
-    } else if (hit) {
-      const doorId = this.doorColliders.byHandle.get(hit.collider.handle);
-      const vehicleId = this.vehicles.byHandle.get(hit.collider.handle);
+    } else if (hit || car) {
+      const doorId = hit ? this.doorColliders.byHandle.get(hit.collider.handle) : undefined;
+      const vehicleId = car?.id;
       if (vehicleId !== undefined) {
         const info = this.vehicles.info(vehicleId);
         if (info) {
@@ -738,7 +734,7 @@ export class Game {
       } else if (doorId !== undefined) {
         this.target = { kind: 'door', id: doorId };
         prompt = this.doorColliders.open[doorId] ? 'Close door' : 'Open door';
-      } else {
+      } else if (hit) {
         const t = hit.timeOfImpact;
         const hx = o.x + d.x * t, hy = o.y + d.y * t, hz = o.z + d.z * t;
         const pump = this.map.fuelPumps.findIndex((p) => Math.abs(p[0] - hx) < 0.6 && Math.abs(p[1] - hy) < 1 && Math.abs(p[2] - hz) < 0.5);

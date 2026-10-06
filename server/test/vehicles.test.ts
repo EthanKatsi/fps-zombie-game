@@ -183,3 +183,19 @@ test('no fuel, no driving; a gas can refuels it and a pump refills the can', asy
   assert.ok(car.state.pos.z > z0 + 3, 'drives with fuel');
   assert.ok(car.state.fuel < 6 && car.state.fuel > 5.9, `burned a tiny amount: ${car.state.fuel}`);
 });
+
+test('walking into a parked car stops you at its side', async () => {
+  const { c, p } = await connect('bumper');
+  const car = game.vehicles.vehicles.find((v) => v.type === 'sedan')!;
+  car.state = { ...car.state, pos: { x: -28, y: 0, z: -2 }, yaw: Math.PI, speed: 0 };
+  car.motor.sync(car.state);
+  // 4 m to the car's left, walking towards it (+X is yaw -PI/2).
+  p.teleport({ x: car.state.pos.x - 4, y: 0.05, z: car.state.pos.z }, -Math.PI / 2);
+  const seqs2 = { n: 5000 };
+  await new Promise<void>((done) => {
+    const iv = setInterval(() => c.emit('input', [{ seq: ++seqs2.n, mx: 0, mz: 1, yaw: -Math.PI / 2, pitch: 0, b: 0 }]), 33);
+    setTimeout(() => (clearInterval(iv), done()), 1500);
+  });
+  const gap = car.state.pos.x - p.state.pos.x;
+  assert.ok(gap > 1.2 && gap < 1.5, `stopped beside the car (centre gap ${gap.toFixed(2)} m)`);
+});

@@ -22,7 +22,13 @@ export const WORLD_GROUPS = groups(Layer.WORLD, 0xffff);
 export const PLAYER_GROUPS = groups(Layer.PLAYER, Layer.WORLD | Layer.STRUCTURE | Layer.VEHICLE);
 /** Bullets: the world and structures stop them; they pass through vehicles (you can shoot the driver). */
 export const SHOT_GROUPS = groups(Layer.PLAYER, Layer.WORLD | Layer.STRUCTURE);
-/** A vehicle's own collider: an obstacle for players and other vehicles. */
-export const VEHICLE_GROUPS = groups(Layer.VEHICLE, 0xffff);
+/**
+ * A vehicle's own collider is only the shape its motor sweeps; nothing queries it (filter 0), so it
+ * never has to be refreshed in the broad-phase. Players and other vehicles collide with vehicles
+ * through `pushOutOfBox` instead (see sim/vehicle.ts).
+ */
+export const VEHICLE_GROUPS = groups(Layer.VEHICLE, 0);
+/** A collider that interacts with nothing (inactive door poses). */
+export const DISABLED_GROUPS = groups(Layer.STRUCTURE, 0);
 /** What a moving vehicle collides with (players and zombies are run over, not collided with). */
 export const VEHICLE_MOVE_GROUPS = groups(Layer.VEHICLE, Layer.WORLD | Layer.STRUCTURE | Layer.VEHICLE);

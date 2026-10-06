@@ -1,6 +1,6 @@
 import type { Collider, World } from '@dimforge/rapier3d-compat';
 import { quatFromEulerYXZ } from '../math/math';
-import { WORLD_GROUPS } from '../sim/collision';
+import { DISABLED_GROUPS, WORLD_GROUPS } from '../sim/collision';
 import type { Rapier } from '../sim/movement';
 import type { DoorDef } from './mapData';
 
@@ -64,9 +64,15 @@ export const doorAwayDir = (d: DoorDef, px: number, pz: number): 1 | -1 => {
   return side > 0 ? -1 : 1;
 };
 
-/** Door colliders for one physics world; the same class runs on client and server. */
+/**
+ * Door colliders for one physics world; the same class runs on client and server.
+ * Each door has a collider for each pose (closed, open, open the other way) created up front;
+ * toggling switches which one is solid via collision groups, which queries see immediately.
+ * (Moving a collider would need a world.step() to refresh the broad-phase: ~20 ms on the big map.)
+ */
 export class DoorColliders {
-  private readonly colliders: Collider[] = [];
+  /** Per door: [closed, open (default swing), open (reversed)]. */
+  private readonly colliders: Collider[][] = [];
   /** Collider handle -> door id, for raycast interaction. */
   readonly byHandle = new Map<number, number>();
   readonly open: boolean[];
@@ -81,27 +87,29 @@ export class DoorColliders {
     this.open = doors.map((d) => d.startsOpen);
     this.dir = doors.map(() => 1);
     for (const d of doors) {
-      const pose = doorPose(d, d.startsOpen ? 1 : 0);
-      const desc = R.ColliderDesc.cuboid(d.width / 2, d.height / 2, DOOR_THICKNESS / 2)
-        .setTranslation(pose.x, pose.y, pose.z)
-        .setRotation(quatFromEulerYXZ(0, pose.yaw, 0))
-        .setCollisionGroups(WORLD_GROUPS);
-      const c = world.createCollider(desc);
-      this.colliders.push(c);
-      this.byHandle.set(c.handle, d.id);
+      const poses = [0, 1, -1].map((amount, i) => {
+        const pose = doorPose(d, amount);
+        const active = i === (d.startsOpen ? 1 : 0);
+        const desc = R.ColliderDesc.cuboid(d.width / 2, d.height / 2, DOOR_THICKNESS / 2)
+          .setTranslation(pose.x, pose.y, pose.z)
+          .setRotation(quatFromEulerYXZ(0, pose.yaw, 0))
+          .setCollisionGroups(active ? WORLD_GROUPS : DISABLED_GROUPS);
+        const c = world.createCollider(desc);
+        this.byHandle.set(c.handle, d.id);
+        return c;
+      });
+      this.colliders.push(poses);
     }
   }
 
-  /** Move a door's collider. Call world.step() afterwards so scene queries see it. */
+  /** Open / close a door. Takes effect for queries immediately (no world.step needed). */
   set(id: number, open: boolean, dir: 1 | -1 = this.dir[id] ?? 1): void {
-    const d = this.doors[id];
-    const c = this.colliders[id];
-    if (!d || !c) return;
+    const poses = this.colliders[id];
+    if (!this.doors[id] || !poses) return;
     this.open[id] = open;
     this.dir[id] = dir;
-    const pose = doorPose(d, open ? dir : 0);
-    c.setTranslation({ x: pose.x, y: pose.y, z: pose.z });
-    c.setRotation(quatFromEulerYXZ(0, pose.yaw, 0));
+    const active = !open ? 0 : dir === 1 ? 1 : 2;
+    poses.forEach((c, i) => c.setCollisionGroups(i === active ? WORLD_GROUPS : DISABLED_GROUPS));
   }
 
   openIds(): number[] {
