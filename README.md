@@ -1,25 +1,66 @@
-# Grey Season
+# Survive The Zombie Apocalypse
 
-Browser-based multiplayer open-world zombie survival FPS set in the abandoned city of Calder Point.
-TypeScript · Three.js · Rapier · Node · Socket.IO · SQLite.
+Browser-based multiplayer open-world zombie survival FPS set in the abandoned city of Calder Point
+(internal code name: Grey Season). TypeScript · Three.js · Rapier · Node · Socket.IO · SQLite.
 
-> Work in progress. Milestones 1-7 are done: multiplayer first-person movement in a procedurally generated
-> city with enterable buildings, doors and stairs, plus inventory, looting, crafting, item drops, survival stats, death bags, respawning, melee/gun combat, and zombies (walkers, runners, bloaters) that hear gunshots, see you, chase you up stairs and wait outside closed doors, plus lag-compensated PvP with a kill feed and spawn protection.
+> Work in progress. Milestones 1-8 are done: multiplayer first-person movement in a procedurally generated
+> city with enterable buildings, doors and stairs, plus inventory, looting, crafting, item drops, survival stats,
+> death bags, respawning, melee/gun combat, zombies (walkers, runners, bloaters) that hear gunshots, see you, chase
+> you up stairs and wait outside closed doors, lag-compensated PvP with a kill feed and spawn protection, drivable
+> vehicles, and groups with chat, a compass, a minimap and a full map.
 > A shooting range with training dummies is next to the police station (blue sign).
-> Status and next steps: [docs/PROGRESS.md](docs/PROGRESS.md). A full README
-> lands in milestone 11. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
+> Status and next steps: [docs/PROGRESS.md](docs/PROGRESS.md). Design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Run (development)
+## How to run the game
 
-Requires Node 20+ (tested on Node 25).
+### 1. Install the prerequisites
+
+- [Node.js](https://nodejs.org/) **20 or newer** (tested on Node 25). This includes `npm`.
+- [Git](https://git-scm.com/).
+- A modern desktop browser (Chrome, Edge or Firefox) with WebGL.
+
+### 2. Get the code and install dependencies
 
 ```bash
+git clone https://github.com/EthanKatsi/fps-zombie-game.git
+cd fps-zombie-game
 npm install
-npm run dev        # game server on :2567 + Vite client on :5173
 ```
 
-Open http://localhost:5173, pick a survivor name, and click into the window.
-Open a second browser window with a different name to see multiplayer.
+### 3. Start it (development mode)
+
+```bash
+npm run dev
+```
+
+This starts the game server on port **2567** and the Vite client on port **5173**. The first start takes a few
+seconds while the server generates the city and builds its physics colliders.
+
+### 4. Play
+
+1. Open **http://localhost:5173** in your browser.
+2. Type a survivor name (3-16 letters, numbers, `_` or `-`) and click **Enter the city**.
+3. Click inside the game window to capture the mouse. Press **Esc** to release it.
+
+To try multiplayer on one computer, open a second browser window with a different survivor name. Friends on the
+same network can join at `http://<your-computer's-LAN-IP>:5173` (allow Node through your firewall if asked).
+
+### Alternative: production build (single port)
+
+```bash
+npm run build      # builds the client into client/dist
+npm start          # runs the server, which also serves the built client
+```
+
+Then open **http://localhost:2567**.
+
+### Troubleshooting
+
+- **Port already in use**: another copy of the game (or something else) is using port 2567 or 5173. Close it and
+  run `npm run dev` again.
+- **Wipe all players and loot**: stop the server and delete `server/data/game.db`.
+
+## Controls
 
 | Control | Action |
 |---|---|

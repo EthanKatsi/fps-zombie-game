@@ -64,4 +64,5 @@ Start by proposing the folder structure and data models (Player, Item, Inventory
 | Date | Change |
 |---|---|
 | 2026-10-05 | Main menu title changed to **"The Walking Dead"** and the tagline to **"Fight the dead. Fear the living."** The owner chose this, which overrides the "no existing franchise names" rule *for the menu text only*. Internal code names stay "Grey Season" / Calder Point. Note: these are AMC trademarks, so keep the project private. Don't publish or distribute it under that branding. |
+| 2026-11-05 | Menu title renamed to **"Survive The Zombie Apocalypse"** and the tagline to **"Scavenge. Build. Survive."** before pushing to the public GitHub repo (github.com/EthanKatsi/fps-zombie-game). This replaces the 2026-10-05 franchise branding above; no franchise names or taglines anywhere. |
 | 2026-10-05 | Owner asked that everything be documented inside the project folder so work can resume from a fresh chat. See `CLAUDE.md` and `docs/PROGRESS.md`. |

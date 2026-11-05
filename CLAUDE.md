@@ -1,4 +1,4 @@
-# Grey Season (menu title: "The Walking Dead")
+# Grey Season (menu title: "Survive The Zombie Apocalypse")
 
 Browser multiplayer open-world zombie survival FPS. TypeScript monorepo: `/shared` (types, configs,
 deterministic sim, world gen), `/server` (Node + Socket.IO + Rapier + SQLite, authoritative), `/client`
@@ -25,8 +25,8 @@ requirements plus later changes), `docs/ARCHITECTURE.md` (design), `docs/MODELS.
   Don't hard-code tuning numbers in logic.
 - Bump `PROTOCOL_VERSION` in `shared/src/net/protocol.ts` whenever the wire format changes.
 - DB schema changes: append a new migration in `server/src/db/migrations.ts`. Never edit a released one.
-- Keep the original setting (Calder Point, original characters). Only the main-menu text uses "The Walking
-  Dead" branding, at the owner's request. It's an AMC trademark, so the project must stay private.
+- Keep the original setting (Calder Point, original characters). The main-menu title is "Survive The Zombie Apocalypse". Don't use
+  existing franchise names or taglines: the repo (github.com/EthanKatsi/fps-zombie-game) is public.
 
 ## Environment gotchas (Windows)
 - **The owner usually has their own `npm run dev` running in Windows Terminal.** Don't kill it. Its

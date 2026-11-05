@@ -19,7 +19,7 @@ Original requirements: [SPEC.md](SPEC.md). Design: [ARCHITECTURE.md](ARCHITECTUR
 | 10 | Raiding and structure damage | | |
 | 11 | Day/night, 3D audio, settings, polish, balancing, final README | | |
 
-Other commits: menu retitle to "The Walking Dead" (`8937010`).
+Other commits: menu retitle to "The Walking Dead" (`8937010`), later renamed to "Survive The Zombie Apocalypse" before publishing to GitHub.
 
 ## How to resume work in a new chat
 
