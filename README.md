@@ -1,15 +1,7 @@
 # Survive The Zombie Apocalypse
 
-Browser-based multiplayer open-world zombie survival FPS set in the abandoned city of Calder Point
-(internal code name: Grey Season). TypeScript · Three.js · Rapier · Node · Socket.IO · SQLite.
-
-> Work in progress. Milestones 1-8 are done: multiplayer first-person movement in a procedurally generated
-> city with enterable buildings, doors and stairs, plus inventory, looting, crafting, item drops, survival stats,
-> death bags, respawning, melee/gun combat, zombies (walkers, runners, bloaters) that hear gunshots, see you, chase
-> you up stairs and wait outside closed doors, lag-compensated PvP with a kill feed and spawn protection, drivable
-> vehicles, and groups with chat, a compass, a minimap and a full map.
-> A shooting range with training dummies is next to the police station (blue sign).
-> Status and next steps: [docs/PROGRESS.md](docs/PROGRESS.md). Design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Browser-based multiplayer open-world zombie survival FPS set in an abandoned city.
+TypeScript · Three.js · Rapier · Node · Socket.IO · SQLite.
 
 ## How to run the game
 
